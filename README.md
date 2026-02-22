@@ -5,54 +5,16 @@ Sistema web completo para gerenciamento de **Distribuição de Lucros aos Sócio
 ## ✨ Funcionalidades Principais
 
 ### 🔐 Sistema de Autenticação e Controle de Acesso
-- **Login individual** para cada usuário com CPF e senha
-- **Dois níveis de acesso:** Gerência e Sócio
-- **Cadastro controlado:** Apenas Gerência pode criar novos usuários
-- **Administrador padrão** criado automaticamente (CPF: 00000000000)
-- Cada sócio acessa apenas seus próprios dados
-- Gerência visualiza e gerencia dados de todos os sócios
-- Dados isolados e seguros por usuário
-- Logout seguro
 
 ### ⭐ Recursos da GERÊNCIA
-- ✅ **Painel de Administração** para criar e gerenciar usuários
-- ✅ **Filtros avançados** para visualizar dados de sócios específicos
-- ✅ **Visualização consolidada** de todos os sócios
-- ✅ **Exportação completa** de dados de todos os usuários
-- ✅ **Atribuição de roles** (Gerência ou Sócio)
-- ✅ **Exclusão de usuários** e seus dados
-- ✅ Acesso total ao sistema
 
 ### 👔 Recursos do SÓCIO
-- ✅ Registro de distribuição de lucros
-- ✅ Registro de rendimentos financeiros
-- ✅ Visualização dos próprios dados
-- ✅ Edição dos próprios registros
-- ✅ Exportação dos próprios dados
-- ✅ Visualização da lista de sócios
 
 ### 💰 Distribuição de Lucros aos Sócios
-- Registro de data do crédito
-- **Seleção do sócio beneficiário** a partir da lista cadastrada
-- Descrição da operação (opcional)
-- Valor em R$
-- Observações personalizadas
-- Cálculo automático do total distribuído
-- Visualização de todos os sócios da empresa
 
 ### 📈 Rendimentos de Aplicação Financeira
-- Registro por mês/ano
-- Nome do banco
-- Valor do rendimento
-- IR retido pelo banco
-- Observações
-- Cálculo automático dos totais
 
 ### 👥 Gerenciamento de Sócios
-- Lista completa de todos os sócios cadastrados
-- Visualização de nome, CPF e role
-- Indicação de qual é o usuário logado
-- Filtros para gerência visualizar dados específicos
 
 ## 🚀 Como Usar
 
@@ -110,9 +72,6 @@ Sistema web completo para gerenciamento de **Distribuição de Lucros aos Sócio
 ### Operações do SÓCIO
 
 #### Ver Todos os Sócios
-- Clique no botão **"👥 Gerenciar Sócios"** no canto superior direito
-- Você verá a lista completa de sócios cadastrados com suas roles
-- Identifica qual é você na lista
 
 #### Adicionar Registros de Lucros
 1. Na aba **"💰 Distribuição de Lucros"**
@@ -134,32 +93,14 @@ Sistema web completo para gerenciamento de **Distribuição de Lucros aos Sócio
 ### Operações Comuns a Todos
 
 #### Editar Dados
-- Clique em qualquer campo da tabela
-- Digite ou selecione o novo valor
-- A alteração é salva automaticamente
-- **Sócios:** Editam apenas os próprios dados
-- **Gerência:** Pode editar dados ao filtrar um sócio específico
 
 #### Excluir Registros
-- Clique no botão **"🗑️ Excluir"** na linha desejada
-- Confirme a exclusão
-- **Gerência:** Pode excluir ao visualizar sócio específico (não em "Todos")
 
 #### Exportar para Excel
-- Clique no botão **"📥 Exportar Excel"** em cada aba
-- O arquivo CSV será baixado (abre automaticamente no Excel)
-- **Sócios:** Exportam apenas os próprios dados
-- **Gerência:** Exporta dados do sócio filtrado ou de todos
 
 #### Limpar Todos os Dados
-- Clique no botão **"🗑️ Limpar Tudo"**
-- Confirme a ação (ATENÇÃO: não pode ser desfeita!)
-- **Sócios:** Limpam apenas os próprios dados
-- **Gerência:** Limpa dados do sócio filtrado (deve selecionar um específico)
 
 ### Navegação
-- Use as abas no topo para alternar entre as planilhas
-- **Atalhos de Teclado:**
   - `Ctrl + 1` = Aba de Distribuição de Lucros
   - `Ctrl + 2` = Aba de Rendimentos Financeiros
   - `Ctrl + N` = Adicionar novo registro
@@ -167,19 +108,8 @@ Sistema web completo para gerenciamento de **Distribuição de Lucros aos Sócio
 ## 💾 Armazenamento de Dados
 
 ### Estrutura de Dados
-- **Dados separados por usuário** - Cada sócio vê apenas seus próprios registros
-- **Lista de sócios compartilhada** - Todos podem ver quem são os sócios e suas roles
-- **Armazenamento local** - Dados salvos no navegador (LocalStorage)
-- **Chaves por CPF** - Cada usuário tem uma chave única: `dados_{cpf}`
-- Não precisa de conexão com internet para usar
-- Os dados ficam salvos mesmo se você fechar e abrir o navegador novamente
-- **IMPORTANTE:** Se você limpar os dados do navegador (cache/cookies), os dados do sistema serão perdidos
 
 ### Backup e Recuperação
-- **Para Sócios:** Exporte seus dados regularmente clicando em "📥 Exportar Excel"
-- **Para Gerência:** Use "📥 Exportar Todos os Dados" para backup completo
-- Os arquivos CSV gerados podem ser salvos como backup
-- Recomenda-se fazer backups semanais ou mensais
 
 ## 🔒 Segurança e Privacidade
 
@@ -206,62 +136,21 @@ Sistema web completo para gerenciamento de **Distribuição de Lucros aos Sócio
    - Logs ficam nos próprios dados exportados
 
 ### Importante sobre Segurança
-- Todos os dados ficam **apenas no seu computador/navegador**
-- Nenhuma informação é enviada para servidores externos
-- As senhas ficam armazenadas localmente **em texto puro** (sistema cliente-side)
-- **Não use senha bancária ou importante** (use senha simples e exclusiva)
-- Para segurança real, seria necessário backend com criptografia
-- Ideal para manter privacidade dos dados contábeis em ambiente local controlado
 
 ### Limitações de Segurança
 ⚠️ **Este é um sistema cliente-side (frontend only):**
-- Segurança é UX-based, não criptográfica
-- Qualquer pessoa com acesso ao navegador pode inspecionar o LocalStorage
-- Senhas não são criptografadas (hash)
-- Não há autenticação de dois fatores (2FA)
-- Não há logs de auditoria permanentes
 
 💡 **Para ambientes corporativos/produção:**
-- Considere implementar backend com Node.js/Express
-- Use banco de dados (PostgreSQL, MongoDB)
-- Implemente JWT para autenticação
-- Use bcrypt para hash de senhas
-- Configure HTTPS
-- Adicione logs de auditoria
 
 ## 📱 Responsividade
 
 O sistema funciona perfeitamente em:
-- 💻 Computadores/Notebooks (recomendado)
-- 📱 Tablets
-- 📲 Smartphones
 
 ## 🎨 Recursos Visuais
 
-- Interface moderna e intuitiva
-- **Tela de login** profissional com aviso de acesso controlado
-- **Badges de role** visíveis (⭐ GERÊNCIA / 👔 SÓCIO)
-- **Painel de Administração** modal para gerência
-- **Filtros visuais** para seleção de sócios (apenas gerência)
-- **Identificação do usuário logado** no cabeçalho com nome e role
-- Tema de cores profissional com gradiente roxo
-- Animações suaves e transições
-- **Mensagens de sucesso** com notificações temporárias
-- **Dropdown de seleção de sócios** (em vez de digitar manualmente)
-- Totais calculados automaticamente com atualização em tempo real
-- Formatação automática de CPF (000.000.000-00)
-- Formatação de valores em moeda brasileira (R$)
-- **Modal de gerenciamento de sócios** com visualização de roles
-- **Tabela de administração de usuários** com ações (criar/excluir)
-- **Botões contextuais** (Admin, Exportar Todos) aparecem conforme a role
-- Design responsivo para desktop, tablet e mobile
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **HTML5** - Estrutura
-- **CSS3** - Estilos e animações
-- **JavaScript** - Lógica e funcionalidades
-- **LocalStorage** - Armazenamento de dados
 
 ## 📝 Notas Importantes
 
@@ -323,8 +212,6 @@ O sistema funciona perfeitamente em:
 ## 🆘 Solução de Problemas
 
 ### Esqueci minha senha
-- **Sócios:** Entre em contato com a Gerência para redefinir sua senha
-- **Gerência:** Use a página [RESETAR-SISTEMA.html](RESETAR-SISTEMA.html) para limpar tudo e recriar o admin
   - ⚠️ Isso apaga TODOS os dados do sistema
   - Sistema recriará o admin padrão automaticamente
 
@@ -349,52 +236,30 @@ Se você não consegue fazer login com as credenciais do admin, pode ser devido 
 4. Volte para a página principal e faça login
 
 ### Não vejo o botão "⚙️ Admin"
-- Verifique se sua role é "Gerência"
-- Badge no canto deve mostrar "⭐ GERÊNCIA"
-- Se você é Sócio, não terá acesso ao painel Admin
 
 ### Não consigo adicionar registros
-- Se você é Gerência: Selecione um sócio específico no filtro (não "Todos")
-- Se você é Sócio: Verifique se está logado corretamente
 
 ### Perdi todos os dados
-- LocalStorage foi limpo (cache do navegador)
-- Não há recuperação automática
-- **Solução:** Restaure do último backup (arquivos CSV exportados)
-- **Prevenção:** Faça backups regulares
 
 ### Campos não salvam automaticamente
-- Verifique se está com internet (não necessária, mas pode afetar o navegador)
-- Recarregue a página (F5)
-- Verifique o console do navegador (F12) por erros
 
 ## 📞 Suporte
 
 **Sistema de Contabilidade Multi-Usuário com Controle de Acesso v3.0**
 
 ### Documentação Completa:
-- [README.md](README.md) - Este arquivo (documentação geral)
-- [SISTEMA-ROLES.md](SISTEMA-ROLES.md) - Detalhes sobre roles e permissões
-- [GUIA-RAPIDO.md](GUIA-RAPIDO.md) - Guia rápido de uso
-- [CHECKLIST-TESTES.md](CHECKLIST-TESTES.md) - Checklist de testes
 
 ### Tecnologias:
-- HTML5 + CSS3 + JavaScript (Vanilla)
-- LocalStorage API
-- Arquitetura cliente-side (sem backend)
 
 ### Desenvolvido para:
-- Controle de Distribuição de Lucros aos Sócios
-- Controle de Rendimentos de Aplicações Financeiras
-- Gestão multi-usuário com isolamento de dados
-- Sistema de permissões baseado em roles
 
----
 
 **Última atualização:** 2025 - Sistema com controle de acesso implementado
 
----
 
 **Versão:** 2.0.0 - Multi-Usuário  
 **Data:** Fevereiro 2026  
 **Desenvolvido com ❤️ para facilitar sua contabilidade**
+=======
+# Contabilidade
+>>>>>>> 70875c888f30116a50ff42189d74d818e9ddb66e
