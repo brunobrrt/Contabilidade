@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Contabilidade</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Tela de Login -->
+    <div id="login-screen" class="auth-screen">
+        <div class="auth-container">
+            <div class="auth-header">
+                <h1>📊 Sistema de Contabilidade</h1>
+                <p>Gerenciamento de Lucros e Rendimentos</p>
+            </div>
+            
+            <div class="auth-form">
+                <h2>Login</h2>
+                <input type="text" id="login-cpf" placeholder="CPF (apenas números)" maxlength="11" onkeypress="if(event.key==='Enter') fazerLogin()">
+                <input type="password" id="login-senha" placeholder="Senha" onkeypress="if(event.key==='Enter') fazerLogin()">
+                <button class="btn btn-primary" onclick="fazerLogin()">🔓 Entrar</button>
+                <p class="auth-info">⚠️ Acesso restrito. Contate a gerência para criar uma conta.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sistema Principal -->
+    <div id="main-system" class="container" style="display: none;">
+        <header>
+            <h1>📊 Sistema de Contabilidade</h1>
+            <p class="subtitle">Gerenciamento de Lucros e Rendimentos</p>
+            <div class="user-info">
+                <span id="usuario-logado"></span>
+                <span id="usuario-role" class="role-badge"></span>
+                <button id="btn-admin" class="btn btn-small" onclick="abrirPainelAdmin()" style="display: none;">⚙️ Administração</button>
+                <button class="btn btn-small" onclick="gerenciarSocios()">👥 Ver Sócios</button>
+                <button class="btn btn-small btn-danger" onclick="fazerLogout()">🚪 Sair</button>
+            </div>
+        </header>
+
+        <nav class="tab-navigation">
+            <button class="tab-btn active" data-tab="lucros">
+                💰 Distribuição de Lucros
+            </button>
+            <button class="tab-btn" data-tab="rendimentos">
+                📈 Rendimentos Financeiros
+            </button>
+        </nav>
+
+        <!-- Filtro para Gerência -->
+        <div id="filtro-gerencia" class="filtro-container" style="display: none;">
+            <div class="filtro-content">
+                <label>📊 Visualizar dados de:</label>
+                <select id="filtro-socio" onchange="aplicarFiltro()">
+                    <option value="todos">Todos os Sócios</option>
+                </select>
+                <button class="btn btn-small btn-secondary" onclick="exportarTodosOsDados()">📥 Exportar Tudo</button>
+            </div>
+        </div>
+
+        <!-- Seção de Distribuição de Lucros -->
+        <section id="lucros-section" class="tab-content active">
+            <div class="section-header">
+                <h2>Planilha Informativa de Distribuição de Lucros aos Sócios</h2>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="addLucroRow()">➕ Adicionar Registro</button>
+                    <button class="btn btn-secondary" onclick="exportToExcel('lucros')">📥 Exportar Excel</button>
+                    <button class="btn btn-danger" onclick="clearAllData('lucros')">🗑️ Limpar Tudo</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="lucros-table">
+                    <thead>
+                        <tr>
+                            <th>Data do Crédito</th>
+                            <th>Sócio Beneficiário</th>
+                            <th>Descrição da Operação</th>
+                            <th>Valor (R$)</th>
+                            <th>Observações</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lucros-tbody">
+                        <!-- Linhas serão adicionadas dinamicamente -->
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                            <td id="lucros-total" style="font-weight: bold;">R$ 0,00</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
+        <!-- Seção de Rendimentos Financeiros -->
+        <section id="rendimentos-section" class="tab-content">
+            <div class="section-header">
+                <h2>Planilha Informativa de Rendimentos de Aplicação Financeira</h2>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="addRendimentoRow()">➕ Adicionar Registro</button>
+                    <button class="btn btn-secondary" onclick="exportToExcel('rendimentos')">📥 Exportar Excel</button>
+                    <button class="btn btn-danger" onclick="clearAllData('rendimentos')">🗑️ Limpar Tudo</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="rendimentos-table">
+                    <thead>
+                        <tr>
+                            <th>Mês do Rendimento</th>
+                            <th>Banco</th>
+                            <th>Valor Rendimento (R$)</th>
+                            <th>IR Retido pelo Banco</th>
+                            <th>Observações</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rendimentos-tbody">
+                        <!-- Linhas serão adicionadas dinamicamente -->
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                            <td id="rendimentos-total" style="font-weight: bold;">R$ 0,00</td>
+                            <td id="ir-total" style="font-weight: bold;">R$ 0,00</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
+        <footer>
+            <p>Sistema de Contabilidade - Dados armazenados localmente no navegador</p>
+        </footer>
+    </div>
+
+    <!-- Modal de Gerenciamento de Sócios -->
+    <div id="modal-socios" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>👥 Sócios da Empresa</h2>
+                <button class="btn-close" onclick="fecharModalSocios()">✖</button>
+            </div>
+            <div class="modal-body">
+                <div class="socios-list">
+                    <h3>Sócios Cadastrados</h3>
+                    <table id="socios-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>CPF</th>
+                                <th>Role</th>
+                            </tr>
+                        </thead>
+                        <tbody id="socios-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Administração -->
+    <div id="modal-admin" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Painel de Administração</h2>
+                <button class="btn-close" onclick="fecharPainelAdmin()">✖</button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-section">
+                    <h3>➕ Criar Novo Usuário</h3>
+                    <div class="form-group">
+                        <input type="text" id="admin-nome" placeholder="Nome completo">
+                        <input type="text" id="admin-cpf" placeholder="CPF (apenas números)" maxlength="11">
+                        <select id="admin-role">
+                            <option value="socio">Sócio (acesso limitado)</option>
+                            <option value="gerencia">Gerência (acesso total)</option>
+                        </select>
+                        <input type="password" id="admin-senha" placeholder="Senha inicial">
+                        <button class="btn btn-primary" onclick="criarNovoUsuario()">✅ Criar Usuário</button>
+                    </div>
+                </div>
+                <hr>
+                <div class="admin-section">
+                    <h3>👥 Gerenciar Usuários</h3>
+                    <table id="admin-users-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>CPF</th>
+                                <th>Role</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
