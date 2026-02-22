@@ -1,6 +1,7 @@
 // ===== VARIÁVEIS GLOBAIS =====
 let usuarioLogado = null;
 let todosOsSocios = [];
+let sociosEmpresa = []; // Sócios da empresa para a conta ativa
 let lucrosData = [];
 let rendimentosData = [];
 let filtroAtual = 'todos'; // Para gerência
@@ -74,15 +75,20 @@ function mostrarSistema() {
             roleBadge.textContent = '⭐ GERÊNCIA';
             roleBadge.className = 'role-badge gerencia';
             document.getElementById('btn-admin').style.display = 'inline-block';
+            document.getElementById('btn-ver-usuarios').style.display = 'inline-block';
             document.getElementById('filtro-gerencia').style.display = 'block';
             carregarFiltroSocios();
         } else {
             roleBadge.textContent = '👔 SÓCIO';
             roleBadge.className = 'role-badge socio';
             document.getElementById('btn-admin').style.display = 'none';
+            document.getElementById('btn-ver-usuarios').style.display = 'none';
             document.getElementById('filtro-gerencia').style.display = 'none';
         }
     }
+    
+    // Carregar sócios da empresa para a conta logada
+    carregarSociosEmpresa(usuarioLogado.cpf);
     
     carregarDadosParaExibicao();
     initializeTabs();
@@ -142,6 +148,158 @@ function carregarTodosOsSocios() {
 
 function salvarTodosOsSocios() {
     localStorage.setItem('todosOsSocios', JSON.stringify(todosOsSocios));
+}
+
+// ===== FUNÇÕES DE SÓCIOS DA EMPRESA =====
+function getCPFParaSociosEmpresa() {
+    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    if (userLogado && userLogado.role === 'gerencia' && filtroAtual !== 'todos') {
+        return filtroAtual;
+    }
+    return usuarioLogado.cpf;
+}
+
+function carregarSociosEmpresa(cpf) {
+    const saved = localStorage.getItem(`socios_empresa_${cpf}`);
+    sociosEmpresa = saved ? JSON.parse(saved) : [];
+}
+
+function salvarSociosEmpresa() {
+    const cpf = getCPFParaSociosEmpresa();
+    localStorage.setItem(`socios_empresa_${cpf}`, JSON.stringify(sociosEmpresa));
+}
+
+function abrirModalSociosEmpresa() {
+    const cpf = getCPFParaSociosEmpresa();
+    carregarSociosEmpresa(cpf);
+
+    // Atualizar título do modal
+    const conta = todosOsSocios.find(s => s.cpf === cpf);
+    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    let titulo = '🏢 Sócios da Empresa';
+    if (conta) {
+        titulo = `🏢 Sócios da Empresa — ${conta.nome}`;
+    }
+    document.getElementById('modal-socios-empresa-titulo').textContent = titulo;
+
+    // Exibir aviso se gerência está em modo "todos"
+    const subtitulo = document.querySelector('#modal-socios-empresa .modal-subtitle');
+    if (userLogado && userLogado.role === 'gerencia' && filtroAtual === 'todos') {
+        subtitulo.innerHTML = '<span style="color:#ffc107">&#9888; Gerenciando sócios da sua própria conta. Selecione um sócio no filtro para gerenciar a conta dele.</span>';
+    } else {
+        subtitulo.textContent = 'Gerencie os sócios vinculados a esta conta';
+    }
+
+    document.getElementById('modal-socios-empresa').style.display = 'flex';
+    renderSociosEmpresaLista();
+}
+
+function fecharModalSociosEmpresa() {
+    document.getElementById('modal-socios-empresa').style.display = 'none';
+    document.getElementById('socio-emp-nome').value = '';
+    document.getElementById('socio-emp-cpf').value = '';
+    document.getElementById('socio-emp-percentual').value = '';
+}
+
+function adicionarSocioEmpresa() {
+    const nome = document.getElementById('socio-emp-nome').value.trim();
+    const cpfRaw = document.getElementById('socio-emp-cpf').value.trim();
+    const percentual = document.getElementById('socio-emp-percentual').value;
+
+    if (!nome) {
+        alert('O nome do sócio é obrigatório!');
+        return;
+    }
+
+    // Verificar duplicata
+    if (sociosEmpresa.some(s => s.nome.toLowerCase() === nome.toLowerCase())) {
+        alert('Já existe um sócio com este nome!');
+        return;
+    }
+
+    const novoSocio = {
+        id: Date.now(),
+        nome,
+        cpf: cpfRaw || null,
+        percentual: percentual ? parseFloat(percentual) : null
+    };
+
+    sociosEmpresa.push(novoSocio);
+    salvarSociosEmpresa();
+
+    document.getElementById('socio-emp-nome').value = '';
+    document.getElementById('socio-emp-cpf').value = '';
+    document.getElementById('socio-emp-percentual').value = '';
+
+    renderSociosEmpresaLista();
+    renderLucrosTable(); // Atualiza dropdowns
+    showSuccessMessage(`Sócio "${nome}" adicionado com sucesso!`);
+}
+
+function excluirSocioEmpresa(id) {
+    const socio = sociosEmpresa.find(s => s.id === id);
+    if (!socio) return;
+    if (!confirm(`Deseja realmente excluir "${socio.nome}"?\nRegistros existentes na planilha não serão afetados.`)) return;
+
+    sociosEmpresa = sociosEmpresa.filter(s => s.id !== id);
+    salvarSociosEmpresa();
+    renderSociosEmpresaLista();
+    renderLucrosTable();
+    showSuccessMessage('Sócio excluído com sucesso!');
+}
+
+function renderSociosEmpresaLista() {
+    const container = document.getElementById('socios-empresa-lista');
+
+    if (sociosEmpresa.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">👤</div>
+                <p>Nenhum sócio cadastrado ainda.</p>
+                <p class="empty-hint">Use o formulário acima para adicionar os sócios da empresa.<br>Eles aparecerão como opções selecionáveis na coluna "Sócio Beneficiário" da planilha.</p>
+            </div>`;
+        return;
+    }
+
+    const totalPercentual = sociosEmpresa.reduce((s, x) => s + (x.percentual || 0), 0);
+
+    let html = `<div class="socios-cards">`;
+    sociosEmpresa.forEach(socio => {
+        const percentualBadge = socio.percentual
+            ? `<span class="percentual-badge">${socio.percentual}%</span>`
+            : '';
+        const cpfInfo = socio.cpf ? `<span class="socio-info-item">🧗 ${socio.cpf}</span>` : '';
+        html += `
+            <div class="socio-card">
+                <div class="socio-card-left">
+                    <div class="socio-avatar">${socio.nome.charAt(0).toUpperCase()}</div>
+                    <div class="socio-details">
+                        <div class="socio-nome">${socio.nome} ${percentualBadge}</div>
+                        <div class="socio-meta">${cpfInfo}</div>
+                    </div>
+                </div>
+                <button class="btn btn-delete btn-small" onclick="excluirSocioEmpresa(${socio.id})" title="Excluir sócio">🗑️ Excluir</button>
+            </div>`;
+    });
+
+    if (totalPercentual > 0) {
+        const cor = totalPercentual === 100 ? '#28a745' : totalPercentual > 100 ? '#dc3545' : '#ffc107';
+        html += `<div class="percentual-total" style="border-color:${cor}; color:${cor};">Total de participação: <strong>${totalPercentual.toFixed(2)}%</strong></div>`;
+    }
+
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+// Retorna o nome do beneficiário de um item (compatibilidade com registros antigos)
+function getNomeSocioBeneficiario(item) {
+    if (item.socioBeneficiario) return item.socioBeneficiario;
+    // Compatibilidade com registros antigos que usavam socioId
+    if (item.socioId) {
+        const socio = todosOsSocios.find(s => s.id.toString() === item.socioId);
+        return socio ? socio.nome : '';
+    }
+    return '';
 }
 
 function gerenciarSocios() {
@@ -298,6 +456,9 @@ function carregarFiltroSocios() {
 
 function aplicarFiltro() {
     filtroAtual = document.getElementById('filtro-socio').value;
+    // Recarregar sócios da empresa para o contexto correto
+    const cpf = getCPFParaSociosEmpresa();
+    carregarSociosEmpresa(cpf);
     carregarDadosParaExibicao();
     renderLucrosTable();
     renderRendimentosTable();
@@ -459,24 +620,15 @@ function addLucroRow() {
         return;
     }
     
-    // Para sócios, socioId é automaticamente o próprio ID
-    // Para gerência, socioId é o ID do sócio filtrado (preenchido automaticamente)
-    let socioIdInicial = '';
-    if (userLogado.role === 'socio') {
-        // Sócio: sempre usa o próprio ID
-        socioIdInicial = userLogado.id.toString();
-    } else if (filtroAtual !== 'todos') {
-        // Gerência: usa o ID do sócio filtrado
-        const socioFiltrado = todosOsSocios.find(s => s.cpf === filtroAtual);
-        if (socioFiltrado) {
-            socioIdInicial = socioFiltrado.id.toString();
-        }
-    }
+    // Pré-selecionar o primeiro sócio da empresa se existir
+    const cpfConta = getCPFParaSociosEmpresa();
+    const sociosDisponiveis = JSON.parse(localStorage.getItem(`socios_empresa_${cpfConta}`) || '[]');
+    const beneficiarioInicial = sociosDisponiveis.length === 1 ? sociosDisponiveis[0].nome : '';
     
     const newLucro = {
         id: Date.now(),
         data: '',
-        socioId: socioIdInicial,
+        socioBeneficiario: beneficiarioInicial,
         descricao: '',
         valor: 0,
         observacoes: '',
@@ -519,30 +671,58 @@ function renderLucrosTable() {
     const isGerencia = userLogado.role === 'gerencia';
     const podeEditar = !isGerencia || filtroAtual !== 'todos';
     
+    if (lucrosData.length === 0 && podeEditar) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
+            <div class="empty-row-hint">📋 Nenhum registro ainda. Clique em <strong>➕ Adicionar Registro</strong> para começar.</div>
+        </td></tr>`;
+        updateLucrosTotal();
+        return;
+    }
+
     lucrosData.forEach(item => {
         const row = document.createElement('tr');
+        
+        const nomeBeneficiario = getNomeSocioBeneficiario(item);
         
         // Determinar como mostrar o campo Sócio Beneficiário
         let socioBeneficiarioHTML = '';
         
-        if (isGerencia) {
-            // Gerência vê dropdown de seleção
-            let sociosOptions = '<option value="">Selecione um sócio</option>';
-            todosOsSocios.forEach(socio => {
-                const selected = item.socioId === socio.id.toString() ? 'selected' : '';
-                sociosOptions += `<option value="${socio.id}" ${selected}>${socio.nome} (${formatarCPFExibicao(socio.cpf)})</option>`;
-            });
+        if (podeEditar) {
+            // Carregar sócios da empresa para a conta em questão
+            const cpfConta = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+            const sociosDisponiveis = JSON.parse(localStorage.getItem(`socios_empresa_${cpfConta}`) || '[]');
             
-            socioBeneficiarioHTML = `
-                <select ${podeEditar ? '' : 'disabled'} onchange="updateLucroData(${item.id}, 'socioId', this.value)">
-                    ${sociosOptions}
-                </select>
-            `;
+            if (sociosDisponiveis.length > 0) {
+                let options = '<option value="">-- Selecione um Sócio --</option>';
+                let valorEncontrado = false;
+                
+                sociosDisponiveis.forEach(s => {
+                    const selected = nomeBeneficiario === s.nome ? 'selected' : '';
+                    if (selected) valorEncontrado = true;
+                    const label = s.percentual ? `${s.nome} (${s.percentual}%)` : s.nome;
+                    options += `<option value="${s.nome}" ${selected}>${label}</option>`;
+                });
+                
+                // Se o valor atual não está na lista (valor antigo/manual), adicionar como opção extra
+                if (nomeBeneficiario && !valorEncontrado) {
+                    options += `<option value="${nomeBeneficiario}" selected>✏️ ${nomeBeneficiario}</option>`;
+                }
+                
+                socioBeneficiarioHTML = `<select onchange="updateLucroData(${item.id}, 'socioBeneficiario', this.value)">${options}</select>`;
+            } else {
+                // Nenhum sócio cadastrado: campo de texto + dica
+                socioBeneficiarioHTML = `
+                    <div class="no-socios-hint">
+                        <input type="text" value="${nomeBeneficiario}" placeholder="Nome do sócio"
+                            onchange="updateLucroData(${item.id}, 'socioBeneficiario', this.value)">
+                        <small class="hint-text" onclick="abrirModalSociosEmpresa()" title="Clique para cadastrar sócios da empresa">
+                            💡 Cadastre sócios para facilitar a seleção
+                        </small>
+                    </div>`;
+            }
         } else {
-            // Sócio vê apenas seu próprio nome (não editável)
-            const socio = todosOsSocios.find(s => s.id.toString() === item.socioId);
-            const nomeSocio = socio ? `${socio.nome}` : userLogado.nome;
-            socioBeneficiarioHTML = `<span style="color: #495057; font-weight: 500;">${nomeSocio}</span>`;
+            // Modo somente leitura (gerência visualizando todos)
+            socioBeneficiarioHTML = `<span class="socio-beneficiario-text">${nomeBeneficiario || '-'}</span>`;
         }
         
         const proprietario = isGerencia && filtroAtual === 'todos' 
@@ -628,6 +808,14 @@ function renderRendimentosTable() {
     const isGerencia = userLogado.role === 'gerencia';
     const podeEditar = !isGerencia || filtroAtual !== 'todos';
     
+    if (rendimentosData.length === 0 && podeEditar) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
+            <div class="empty-row-hint">📋 Nenhum registro ainda. Clique em <strong>➕ Adicionar Registro</strong> para começar.</div>
+        </td></tr>`;
+        updateRendimentosTotal();
+        return;
+    }
+
     rendimentosData.forEach(item => {
         const row = document.createElement('tr');
         
@@ -712,17 +900,16 @@ function exportToExcel(type) {
         const incluirProprietario = userLogado.role === 'gerencia' && filtroAtual === 'todos';
         
         headers = incluirProprietario 
-            ? ['Registrado por', 'Data do Crédito', 'Nome do Sócio', 'CPF do Sócio', 'Descrição da Operação', 'Valor (R$)', 'Observações']
-            : ['Data do Crédito', 'Nome do Sócio', 'CPF do Sócio', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
+            ? ['Registrado por', 'Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações']
+            : ['Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
         
         data = lucrosData.map(item => {
-            const socio = todosOsSocios.find(s => s.id.toString() === item.socioId);
+            const nomeBeneficiario = getNomeSocioBeneficiario(item);
             const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
             
             const baseData = [
                 item.data,
-                socio ? socio.nome : '',
-                socio ? formatarCPFExibicao(socio.cpf) : '',
+                nomeBeneficiario,
                 item.descricao,
                 item.valor.toFixed(2),
                 item.observacoes
@@ -865,6 +1052,7 @@ document.addEventListener('keydown', (e) => {
 window.onclick = function(event) {
     const modalSocios = document.getElementById('modal-socios');
     const modalAdmin = document.getElementById('modal-admin');
+    const modalSociosEmpresa = document.getElementById('modal-socios-empresa');
     
     if (event.target === modalSocios) {
         fecharModalSocios();
@@ -872,5 +1060,9 @@ window.onclick = function(event) {
     
     if (event.target === modalAdmin) {
         fecharPainelAdmin();
+    }
+
+    if (event.target === modalSociosEmpresa) {
+        fecharModalSociosEmpresa();
     }
 }

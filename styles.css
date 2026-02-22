@@ -655,3 +655,250 @@ hr {
         transform: translateX(0);
     }
 }
+
+/* ===== BOTÕES EXTRA ===== */
+.btn-empresa {
+    background: #17a2b8;
+    color: white;
+}
+.btn-empresa:hover {
+    background: #138496;
+}
+.btn-info {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.btn-info:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* ===== MODAL GRANDE ===== */
+.modal-large {
+    max-width: 700px;
+}
+
+.modal-subtitle {
+    font-size: 0.85rem;
+    opacity: 0.88;
+    margin-top: 4px;
+}
+
+/* ===== FORM ROW (formulário horizontal) ===== */
+.form-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 160px;
+}
+
+.form-field-sm {
+    flex: 0 0 140px;
+}
+
+.form-field-btn {
+    flex: 0 0 auto;
+}
+
+.form-field label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+.form-field input {
+    padding: 10px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-field input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.required {
+    color: #dc3545;
+    font-size: 0.85em;
+}
+
+.optional {
+    color: #6c757d;
+    font-weight: normal;
+    font-size: 0.8em;
+}
+
+/* ===== CARDS DE SÓCIOS ===== */
+.socios-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.socio-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border: 1.5px solid #e9ecef;
+    border-radius: 12px;
+    background: #f8f9fa;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.socio-card:hover {
+    box-shadow: 0 3px 12px rgba(102, 126, 234, 0.15);
+    border-color: #667eea;
+}
+
+.socio-card-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.socio-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.socio-nome {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.socio-meta {
+    margin-top: 3px;
+    font-size: 0.82rem;
+    color: #6c757d;
+}
+
+.socio-info-item {
+    margin-right: 10px;
+}
+
+.percentual-badge {
+    background: #667eea;
+    color: white;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+}
+
+.percentual-total {
+    text-align: right;
+    font-size: 0.9rem;
+    padding: 10px 18px;
+    border: 2px solid;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.empty-state p {
+    font-size: 1rem;
+    margin-bottom: 6px;
+}
+
+.empty-hint {
+    font-size: 0.85rem !important;
+    color: #adb5bd !important;
+    line-height: 1.6;
+}
+
+/* ===== TABELA - ESTADO VAZIO ===== */
+.empty-table-msg {
+    padding: 0 !important;
+}
+
+.empty-row-hint {
+    padding: 30px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.95rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin: 10px;
+}
+
+/* ===== DROPDOWN SÓCIO BENEFICIÁRIO NA TABELA ===== */
+.no-socios-hint {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.hint-text {
+    color: #667eea;
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    transition: color 0.2s;
+}
+
+.hint-text:hover {
+    color: #5568d3;
+}
+
+.socio-beneficiario-text {
+    font-weight: 500;
+    color: #495057;
+    display: inline-block;
+    padding: 4px 0;
+}
+
+/* ===== RESPONSIVIDADE FORM ROW ===== */
+@media (max-width: 600px) {
+    .form-row {
+        flex-direction: column;
+    }
+
+    .form-field-sm,
+    .form-field-btn {
+        flex: 1;
+        width: 100%;
+    }
+
+    .user-info {
+        position: static;
+        justify-content: center;
+        margin-top: 15px;
+    }
+}

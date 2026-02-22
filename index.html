@@ -34,7 +34,8 @@
                 <span id="usuario-logado"></span>
                 <span id="usuario-role" class="role-badge"></span>
                 <button id="btn-admin" class="btn btn-small" onclick="abrirPainelAdmin()" style="display: none;">⚙️ Administração</button>
-                <button class="btn btn-small" onclick="gerenciarSocios()">👥 Ver Sócios</button>
+                <button class="btn btn-small btn-empresa" onclick="abrirModalSociosEmpresa()" title="Gerencie os sócios vinculados a esta conta">🏢 Sócios da Empresa</button>
+                <button class="btn btn-small btn-info" onclick="gerenciarSocios()" id="btn-ver-usuarios" style="display:none;">👥 Usuários</button>
                 <button class="btn btn-small btn-danger" onclick="fazerLogout()">🚪 Sair</button>
             </div>
         </header>
@@ -201,6 +202,49 @@
                         <tbody id="admin-users-tbody">
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Sócios da Empresa -->
+    <div id="modal-socios-empresa" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <div>
+                    <h2 id="modal-socios-empresa-titulo">🏢 Sócios da Empresa</h2>
+                    <p class="modal-subtitle">Gerencie os sócios vinculados a esta conta</p>
+                </div>
+                <button class="btn-close" onclick="fecharModalSociosEmpresa()">✖</button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-section">
+                    <h3>➕ Adicionar Sócio</h3>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Nome completo <span class="required">*</span></label>
+                            <input type="text" id="socio-emp-nome" placeholder="Ex: João da Silva">
+                        </div>
+                        <div class="form-field">
+                            <label>CPF <span class="optional">(opcional)</span></label>
+                            <input type="text" id="socio-emp-cpf" placeholder="000.000.000-00" maxlength="14">
+                        </div>
+                        <div class="form-field form-field-sm">
+                            <label>% Participação <span class="optional">(opcional)</span></label>
+                            <input type="number" id="socio-emp-percentual" placeholder="Ex: 30" min="0" max="100" step="0.01">
+                        </div>
+                        <div class="form-field form-field-btn">
+                            <label>&nbsp;</label>
+                            <button class="btn btn-primary" onclick="adicionarSocioEmpresa()">✅ Adicionar</button>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="admin-section">
+                    <h3>👥 Sócios Cadastrados</h3>
+                    <div id="socios-empresa-lista">
+                        <!-- Preenchido via JS -->
+                    </div>
                 </div>
             </div>
         </div>
