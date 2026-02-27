@@ -414,8 +414,11 @@ function renderAdminUsersTable() {
             <td>${socio.nome}${isYou ? ' <span style="color: #28a745;">(Você)</span>' : ''}</td>
             <td>${formatarCPFExibicao(socio.cpf)}</td>
             <td>${roleText}</td>
-            <td>
-                ${!isYou ? `<button class="btn btn-delete btn-small" onclick="excluirUsuario('${socio.cpf}')">🗑️ Excluir</button>` : '<span style="color: #6c757d;">-</span>'}
+            <td class="td-actions">
+                ${!isYou
+                    ? `<button class="btn btn-edit btn-small" onclick="abrirModalEditarUsuario('${socio.cpf}')">✏️ Editar</button>
+                       <button class="btn btn-delete btn-small" onclick="excluirUsuario('${socio.cpf}')">🗑️ Excluir</button>`
+                    : '<span style="color: #6c757d;">-</span>'}
             </td>
         `;
         tbody.appendChild(row);
@@ -437,6 +440,74 @@ function excluirUsuario(cpf) {
     renderAdminUsersTable();
     carregarFiltroSocios();
     showSuccessMessage('Usuário excluído com sucesso!');
+}
+
+// ===== FUNÇÕES DE EDIÇÃO DE USUÁRIO =====
+function abrirModalEditarUsuario(cpf) {
+    const socio = todosOsSocios.find(s => s.cpf === cpf);
+    if (!socio) return;
+
+    document.getElementById('edit-user-cpf-original').value = socio.cpf;
+    document.getElementById('edit-user-nome').value = socio.nome;
+    document.getElementById('edit-user-cpf').value = socio.cpf;
+    document.getElementById('edit-user-role').value = socio.role;
+    document.getElementById('edit-user-senha').value = '';
+    document.getElementById('edit-user-subtitle').textContent = `Editando: ${socio.nome} — ${formatarCPFExibicao(socio.cpf)}`;
+
+    document.getElementById('modal-editar-usuario').style.display = 'flex';
+}
+
+function fecharModalEditarUsuario() {
+    document.getElementById('modal-editar-usuario').style.display = 'none';
+    document.getElementById('edit-user-nome').value = '';
+    document.getElementById('edit-user-cpf').value = '';
+    document.getElementById('edit-user-senha').value = '';
+    document.getElementById('edit-user-cpf-original').value = '';
+}
+
+function salvarEdicaoUsuario() {
+    const cpfOriginal = document.getElementById('edit-user-cpf-original').value;
+    const novoNome = document.getElementById('edit-user-nome').value.trim();
+    const novoCpf = document.getElementById('edit-user-cpf').value.replace(/\D/g, '');
+    const novoRole = document.getElementById('edit-user-role').value;
+    const novaSenha = document.getElementById('edit-user-senha').value;
+
+    if (!novoNome) { alert('O nome é obrigatório!'); return; }
+    if (!novoCpf || novoCpf.length !== 11) { alert('CPF inválido! Deve ter 11 dígitos.'); return; }
+
+    // Verificar CPF duplicado (apenas se mudou)
+    if (novoCpf !== cpfOriginal && todosOsSocios.some(s => s.cpf === novoCpf)) {
+        alert('Este CPF já está em uso por outro usuário!');
+        return;
+    }
+
+    const idx = todosOsSocios.findIndex(s => s.cpf === cpfOriginal);
+    if (idx === -1) { alert('Usuário não encontrado!'); return; }
+
+    // Migrar dados do localStorage se o CPF mudou
+    if (novoCpf !== cpfOriginal) {
+        const dadosAntigos = localStorage.getItem(`dados_${cpfOriginal}`);
+        if (dadosAntigos) {
+            localStorage.setItem(`dados_${novoCpf}`, dadosAntigos);
+            localStorage.removeItem(`dados_${cpfOriginal}`);
+        }
+        const sociosEmpresaAntigos = localStorage.getItem(`socios_empresa_${cpfOriginal}`);
+        if (sociosEmpresaAntigos) {
+            localStorage.setItem(`socios_empresa_${novoCpf}`, sociosEmpresaAntigos);
+            localStorage.removeItem(`socios_empresa_${cpfOriginal}`);
+        }
+    }
+
+    todosOsSocios[idx].nome = novoNome;
+    todosOsSocios[idx].cpf = novoCpf;
+    todosOsSocios[idx].role = novoRole;
+    if (novaSenha) todosOsSocios[idx].senha = novaSenha;
+
+    salvarTodosOsSocios();
+    fecharModalEditarUsuario();
+    renderAdminUsersTable();
+    carregarFiltroSocios();
+    showSuccessMessage(`Usuário "${novoNome}" atualizado com sucesso!`);
 }
 
 // ===== FUNÇÕES DE FILTRO (GERÊNCIA) =====
@@ -462,6 +533,11 @@ function aplicarFiltro() {
     carregarDadosParaExibicao();
     renderLucrosTable();
     renderRendimentosTable();
+    // Mostrar/ocultar botão de exportar empresa selecionada
+    const btnExportarEmpresa = document.getElementById('btn-exportar-empresa');
+    if (btnExportarEmpresa) {
+        btnExportarEmpresa.style.display = filtroAtual !== 'todos' ? 'inline-block' : 'none';
+    }
 }
 
 // ===== CARREGAMENTO DE DADOS BASEADO EM ROLE =====
@@ -886,125 +962,204 @@ function clearAllData(type) {
     }
 }
 
-// ===== FUNÇÃO DE EXPORTAÇÃO PARA EXCEL =====
+// ===== HELPER: GERAR E BAIXAR ARQUIVO CSV =====
+function gerarDownloadCSV(headers, data, filename) {
+    let csvContent = '\uFEFF'; // BOM para UTF-8 (compatibilidade Excel/Contimatic)
+    csvContent += headers.join(';') + '\n';
+    data.forEach(row => {
+        csvContent += row.map(cell => `"${(cell !== undefined && cell !== null ? cell : '').toString().replace(/"/g, '""')}"`).join(';') + '\n';
+    });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.cssText = 'position:fixed;top:-100px;left:-100px;opacity:0;';
+    document.body.appendChild(link);
+    // Usar evento não-borbulhante para não disparar window.onclick
+    link.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
+    setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, 100);
+}
+
+// ===== FUNÇÃO DE EXPORTAÇÃO PARA EXCEL/CSV =====
 function exportToExcel(type) {
-    let data, headers, filename;
-    
+    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const incluirProprietario = userLogado.role === 'gerencia' && filtroAtual === 'todos';
+
     if (type === 'lucros') {
         if (lucrosData.length === 0) {
-            alert('Não há dados para exportar!');
+            alert('Não há dados de lucros para exportar!');
             return;
         }
-        
-        const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-        const incluirProprietario = userLogado.role === 'gerencia' && filtroAtual === 'todos';
-        
-        headers = incluirProprietario 
-            ? ['Registrado por', 'Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações']
+        const headers = incluirProprietario
+            ? ['Empresa', 'Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações']
             : ['Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
-        
-        data = lucrosData.map(item => {
-            const nomeBeneficiario = getNomeSocioBeneficiario(item);
+        const data = lucrosData.map(item => {
             const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
-            
-            const baseData = [
-                item.data,
-                nomeBeneficiario,
-                item.descricao,
+            const base = [
+                item.data || '',
+                getNomeSocioBeneficiario(item),
+                item.descricao || '',
                 item.valor.toFixed(2),
-                item.observacoes
+                item.observacoes || ''
             ];
-            
-            return incluirProprietario ? [proprietario ? proprietario.nome : '', ...baseData] : baseData;
+            return incluirProprietario ? [proprietario ? proprietario.nome : '', ...base] : base;
         });
-        
-        filename = 'distribuicao_lucros.csv';
+        const sufixo = filtroAtual !== 'todos'
+            ? `_${(todosOsSocios.find(s => s.cpf === filtroAtual)?.nome || filtroAtual).replace(/\s+/g, '_')}`
+            : '';
+        gerarDownloadCSV(headers, data, `distribuicao_lucros${sufixo}.csv`);
+        showSuccessMessage('Lucros exportados com sucesso!');
     } else {
         if (rendimentosData.length === 0) {
-            alert('Não há dados para exportar!');
+            alert('Não há dados de rendimentos para exportar!');
             return;
         }
-        
-        const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-        const incluirProprietario = userLogado.role === 'gerencia' && filtroAtual === 'todos';
-        
-        headers = incluirProprietario
-            ? ['Registrado por', 'Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações']
+        const headers = incluirProprietario
+            ? ['Empresa', 'Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações']
             : ['Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações'];
-        
-        data = rendimentosData.map(item => {
+        const data = rendimentosData.map(item => {
             const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
-            
-            const baseData = [
-                item.mes,
-                item.banco,
+            const base = [
+                item.mes || '',
+                item.banco || '',
                 item.valorRendimento.toFixed(2),
                 item.irRetido.toFixed(2),
-                item.observacoes
+                item.observacoes || ''
             ];
-            
-            return incluirProprietario ? [proprietario ? proprietario.nome : '', ...baseData] : baseData;
+            return incluirProprietario ? [proprietario ? proprietario.nome : '', ...base] : base;
         });
-        
-        filename = 'rendimentos_financeiros.csv';
+        const sufixo = filtroAtual !== 'todos'
+            ? `_${(todosOsSocios.find(s => s.cpf === filtroAtual)?.nome || filtroAtual).replace(/\s+/g, '_')}`
+            : '';
+        gerarDownloadCSV(headers, data, `rendimentos_financeiros${sufixo}.csv`);
+        showSuccessMessage('Rendimentos exportados com sucesso!');
     }
-    
-    // Criar CSV
-    let csvContent = '\uFEFF'; // BOM para UTF-8
-    csvContent += headers.join(';') + '\n';
-    
-    data.forEach(row => {
-        csvContent += row.map(cell => `"${cell}"`).join(';') + '\n';
-    });
-    
-    // Fazer download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showSuccessMessage('Arquivo exportado com sucesso!');
+}
+
+// ===== EXPORTAR SOMENTE A EMPRESA SELECIONADA =====
+function exportarEmpresaSelecionada() {
+    if (filtroAtual === 'todos') {
+        alert('Por favor, selecione uma empresa específica no filtro antes de exportar.');
+        return;
+    }
+
+    const socio = todosOsSocios.find(s => s.cpf === filtroAtual);
+    const nomeEmpresa = socio ? socio.nome : filtroAtual;
+    const sufixoArquivo = nomeEmpresa.replace(/[\s/\\:*?"<>|]/g, '_');
+
+    // Ler dados DIRETAMENTE do localStorage para garantir dados frescos
+    const chave = `dados_${filtroAtual}`;
+    const dadosSalvos = localStorage.getItem(chave);
+
+    if (!dadosSalvos) {
+        alert(`Não há dados salvos para "${nomeEmpresa}".`);
+        return;
+    }
+
+    const parsed = JSON.parse(dadosSalvos);
+    const lucros = parsed.lucros || [];
+    const rendimentos = parsed.rendimentos || [];
+
+    if (lucros.length === 0 && rendimentos.length === 0) {
+        alert(`Não há registros para exportar de "${nomeEmpresa}".`);
+        return;
+    }
+
+    const exportados = [];
+
+    if (lucros.length > 0) {
+        const headers = ['Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
+        const data = lucros.map(item => [
+            item.data || '',
+            item.socioBeneficiario || '',
+            item.descricao || '',
+            (parseFloat(item.valor) || 0).toFixed(2),
+            item.observacoes || ''
+        ]);
+        gerarDownloadCSV(headers, data, `lucros_${sufixoArquivo}.csv`);
+        exportados.push('Distribuição de Lucros');
+    }
+
+    if (rendimentos.length > 0) {
+        setTimeout(() => {
+            const headers = ['Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações'];
+            const data = rendimentos.map(item => [
+                item.mes || '',
+                item.banco || '',
+                (parseFloat(item.valorRendimento) || 0).toFixed(2),
+                (parseFloat(item.irRetido) || 0).toFixed(2),
+                item.observacoes || ''
+            ]);
+            gerarDownloadCSV(headers, data, `rendimentos_${sufixoArquivo}.csv`);
+        }, 300);
+        exportados.push('Rendimentos Financeiros');
+    }
+
+    showSuccessMessage(`"${nomeEmpresa}" exportado: ${exportados.join(' + ')}`);
 }
 
 // Exportar todos os dados (para gerência)
 function exportarTodosOsDados() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    
+
     if (userLogado.role !== 'gerencia') {
         alert('Acesso negado!');
         return;
     }
-    
-    // Salvar filtro atual
-    const filtroAnterior = filtroAtual;
-    
-    // Carregar todos os dados
-    filtroAtual = 'todos';
-    carregarDadosParaExibicao();
-    
-    // Exportar lucros
-    if (lucrosData.length > 0) {
-        exportToExcel('lucros');
-    }
-    
-    // Exportar rendimentos
-    setTimeout(() => {
-        if (rendimentosData.length > 0) {
-            exportToExcel('rendimentos');
+
+    // Coletar todos os dados de todos os sócios sem alterar o filtro atual
+    let todosLucros = [];
+    let todosRendimentos = [];
+
+    todosOsSocios.forEach(socio => {
+        if (socio.role === 'socio') {
+            const dados = localStorage.getItem(`dados_${socio.cpf}`);
+            if (dados) {
+                const parsed = JSON.parse(dados);
+                (parsed.lucros || []).forEach(l => todosLucros.push({ ...l, proprietarioCpf: socio.cpf, proprietarioNome: socio.nome }));
+                (parsed.rendimentos || []).forEach(r => todosRendimentos.push({ ...r, proprietarioCpf: socio.cpf, proprietarioNome: socio.nome }));
+            }
         }
-        
-        // Restaurar filtro
-        filtroAtual = filtroAnterior;
-        carregarDadosParaExibicao();
-        renderLucrosTable();
-        renderRendimentosTable();
-    }, 500);
+    });
+
+    if (todosLucros.length === 0 && todosRendimentos.length === 0) {
+        alert('Não há dados para exportar!');
+        return;
+    }
+
+    if (todosLucros.length > 0) {
+        const headers = ['Empresa', 'Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
+        const data = todosLucros.map(item => [
+            item.proprietarioNome || '',
+            item.data || '',
+            getNomeSocioBeneficiario(item),
+            item.descricao || '',
+            item.valor.toFixed(2),
+            item.observacoes || ''
+        ]);
+        gerarDownloadCSV(headers, data, 'todos_lucros.csv');
+    }
+
+    setTimeout(() => {
+        if (todosRendimentos.length > 0) {
+            const headers = ['Empresa', 'Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações'];
+            const data = todosRendimentos.map(item => [
+                item.proprietarioNome || '',
+                item.mes || '',
+                item.banco || '',
+                item.valorRendimento.toFixed(2),
+                item.irRetido.toFixed(2),
+                item.observacoes || ''
+            ]);
+            gerarDownloadCSV(headers, data, 'todos_rendimentos.csv');
+        }
+    }, 400);
+
+    showSuccessMessage('Todos os dados exportados com sucesso!');
 }
 
 // ===== FUNÇÃO DE MENSAGEM DE SUCESSO =====
