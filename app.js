@@ -183,9 +183,9 @@ function abrirModalSociosEmpresa() {
     document.getElementById('modal-socios-empresa-titulo').textContent = titulo;
 
     // Exibir aviso se gerência está em modo "todos"
-    const subtitulo = document.querySelector('#modal-socios-empresa .modal-subtitle');
+    const subtitulo = document.getElementById('modal-socios-empresa-subtitulo');
     if (userLogado && userLogado.role === 'gerencia' && filtroAtual === 'todos') {
-        subtitulo.innerHTML = '<span style="color:#ffc107">&#9888; Gerenciando sócios da sua própria conta. Selecione um sócio no filtro para gerenciar a conta dele.</span>';
+        subtitulo.innerHTML = '<span style="color:#d4a017">&#9888; Gerenciando sua própria conta. Filtre por um sócio para gerenciar a conta dele.</span>';
     } else {
         subtitulo.textContent = 'Gerencie os sócios vinculados a esta conta';
     }
@@ -1050,19 +1050,11 @@ document.addEventListener('keydown', (e) => {
 
 // Fechar modals ao clicar fora
 window.onclick = function(event) {
-    const modalSocios = document.getElementById('modal-socios');
-    const modalAdmin = document.getElementById('modal-admin');
-    const modalSociosEmpresa = document.getElementById('modal-socios-empresa');
-    
-    if (event.target === modalSocios) {
-        fecharModalSocios();
-    }
-    
-    if (event.target === modalAdmin) {
-        fecharPainelAdmin();
-    }
-
-    if (event.target === modalSociosEmpresa) {
-        fecharModalSociosEmpresa();
-    }
+    const targets = [
+        { el: document.getElementById('modal-socios'),          fn: fecharModalSocios },
+        { el: document.getElementById('modal-admin'),           fn: fecharPainelAdmin },
+        { el: document.getElementById('modal-socios-empresa'),  fn: fecharModalSociosEmpresa },
+        { el: document.getElementById('modal-editar-usuario'),  fn: fecharModalEditarUsuario },
+    ];
+    targets.forEach(({ el, fn }) => { if (event.target === el) fn(); });
 }
