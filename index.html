@@ -20,8 +20,8 @@
                 <h2>Acesso ao Sistema</h2>
                 <div class="input-group">
                     <label>CPF</label>
-                    <input type="text" id="login-cpf" placeholder="Apenas números ou 000.000.000-00" maxlength="14"
-                        onkeypress="if(event.key==='Enter') fazerLogin()">
+                    <input type="text" id="login-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11"
+                        inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onkeypress="if(event.key==='Enter') fazerLogin()">
                 </div>
                 <div class="input-group">
                     <label>Senha</label>
@@ -167,7 +167,7 @@
                     <div class="form-group">
                         <div class="edit-form-row">
                             <input type="text" id="socios-nome" placeholder="Nome completo">
-                            <input type="text" id="socios-cpf" placeholder="CPF (apenas números ou 000.000.000-00)" maxlength="14">
+                            <input type="text" id="socios-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
                         </div>
                         <div class="edit-form-row">
                             <select id="socios-role">
@@ -212,7 +212,7 @@
                     <div class="form-group">
                         <div class="edit-form-row">
                             <input type="text" id="admin-nome" placeholder="Nome completo">
-                            <input type="text" id="admin-cpf" placeholder="CPF (apenas números ou 000.000.000-00)" maxlength="14">
+                            <input type="text" id="admin-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
                         </div>
                         <div class="edit-form-row">
                             <select id="admin-role">
@@ -263,7 +263,7 @@
                         </div>
                         <div class="form-field">
                             <label>CPF <span class="required">*</span></label>
-                            <input type="text" id="edit-user-cpf" placeholder="Apenas números ou 000.000.000-00" maxlength="14">
+                            <input type="text" id="edit-user-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
                         </div>
                     </div>
                     <div class="edit-form-row">

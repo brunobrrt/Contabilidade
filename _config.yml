@@ -1,0 +1,22 @@
+title: Sistema de Contabilidade
+description: Sistema de Contabilidade para Escritório de Advocacia
+lang: pt-BR
+
+# Não usar tema do Jekyll — site tem layout próprio
+theme: null
+
+# Incluir arquivos estáticos
+include:
+  - index.html
+  - app.js
+  - styles.css
+  - RESETAR-SISTEMA.html
+
+# Excluir arquivos desnecessários da build
+exclude:
+  - README.md
+  - CHECKLIST-TESTES.md
+  - DIFERENÇAS-SOCIO-GERENCIA.md
+  - GUIA-RAPIDO.md
+  - SISTEMA-ROLES.md
+  - .specstory/
