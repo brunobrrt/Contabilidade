@@ -5,9 +5,13 @@ let sociosEmpresa = []; // Sócios da empresa para a conta ativa
 let lucrosData = [];
 let rendimentosData = [];
 let filtroAtual = 'todos'; // Para gerência
+let db = null; // Firebase Firestore
 
 // ===== INICIALIZAÇÃO =====
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+    mostrarCarregandoFirebase(true);
+    await inicializarFirebase();
+    mostrarCarregandoFirebase(false);
     inicializarSistema();
     verificarLogin();
 });
@@ -29,6 +33,72 @@ function inicializarSistema() {
         salvarTodosOsSocios();
         console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
     }
+}
+
+// ===== FIREBASE =====
+function mostrarCarregandoFirebase(show) {
+    const el = document.getElementById('firebase-loading');
+    if (el) el.style.display = show ? 'flex' : 'none';
+}
+
+async function inicializarFirebase() {
+    try {
+        if (typeof firebase === 'undefined' || !window.firebaseConfig || window.firebaseConfig.apiKey === 'PREENCHA_AQUI') {
+            console.warn('Firebase não configurado. Usando apenas localStorage.');
+            return;
+        }
+        firebase.initializeApp(window.firebaseConfig);
+        db = firebase.firestore();
+        await sincronizarDoFirebase();
+        console.log('✅ Firebase conectado!');
+    } catch (e) {
+        console.warn('Firebase indisponível, usando dados locais:', e.message);
+        db = null;
+    }
+}
+
+async function sincronizarDoFirebase() {
+    if (!db) return;
+    try {
+        const usuariosDoc = await db.collection('sistema').doc('usuarios').get();
+        if (usuariosDoc.exists) {
+            const lista = usuariosDoc.data().lista || [];
+            if (lista.length > 0) localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+        }
+        const dadosSnap = await db.collection('dados_usuario').get();
+        dadosSnap.forEach(d => {
+            localStorage.setItem(`dados_${d.id}`, JSON.stringify({
+                lucros: d.data().lucros || [],
+                rendimentos: d.data().rendimentos || []
+            }));
+        });
+        const sociosSnap = await db.collection('socios_empresa').get();
+        sociosSnap.forEach(d => {
+            localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(d.data().lista || []));
+        });
+    } catch (e) {
+        console.warn('Erro ao sincronizar do Firebase:', e.message);
+    }
+}
+
+function syncFirebaseUsuarios() {
+    if (!db) return;
+    db.collection('sistema').doc('usuarios').set({ lista: todosOsSocios }).catch(console.error);
+}
+
+function syncFirebaseDados(cpf, dados) {
+    if (!db) return;
+    db.collection('dados_usuario').doc(cpf).set(dados).catch(console.error);
+}
+
+function syncFirebaseSociosEmpresa(cpf, lista) {
+    if (!db) return;
+    db.collection('socios_empresa').doc(cpf).set({ lista }).catch(console.error);
+}
+
+function deleteFirebaseDados(cpf) {
+    if (!db) return;
+    db.collection('dados_usuario').doc(cpf).delete().catch(console.error);
 }
 
 // ===== FUNÇÕES DE AUTENTICAÇÃO =====
@@ -148,6 +218,7 @@ function carregarTodosOsSocios() {
 
 function salvarTodosOsSocios() {
     localStorage.setItem('todosOsSocios', JSON.stringify(todosOsSocios));
+    syncFirebaseUsuarios();
 }
 
 // ===== FUNÇÕES DE SÓCIOS DA EMPRESA =====
@@ -167,6 +238,7 @@ function carregarSociosEmpresa(cpf) {
 function salvarSociosEmpresa() {
     const cpf = getCPFParaSociosEmpresa();
     localStorage.setItem(`socios_empresa_${cpf}`, JSON.stringify(sociosEmpresa));
+    syncFirebaseSociosEmpresa(cpf, sociosEmpresa);
 }
 
 function abrirModalSociosEmpresa() {
@@ -484,7 +556,8 @@ function excluirUsuario(cpf) {
     
     // Remover dados do usuário
     localStorage.removeItem(`dados_${cpf}`);
-    
+    deleteFirebaseDados(cpf);
+
     renderAdminUsersTable();
     carregarFiltroSocios();
     showSuccessMessage('Usuário excluído com sucesso!');
@@ -538,11 +611,15 @@ function salvarEdicaoUsuario() {
         if (dadosAntigos) {
             localStorage.setItem(`dados_${novoCpf}`, dadosAntigos);
             localStorage.removeItem(`dados_${cpfOriginal}`);
+            syncFirebaseDados(novoCpf, JSON.parse(dadosAntigos));
+            deleteFirebaseDados(cpfOriginal);
         }
         const sociosEmpresaAntigos = localStorage.getItem(`socios_empresa_${cpfOriginal}`);
         if (sociosEmpresaAntigos) {
             localStorage.setItem(`socios_empresa_${novoCpf}`, sociosEmpresaAntigos);
             localStorage.removeItem(`socios_empresa_${cpfOriginal}`);
+            syncFirebaseSociosEmpresa(novoCpf, JSON.parse(sociosEmpresaAntigos));
+            if (db) db.collection('socios_empresa').doc(cpfOriginal).delete().catch(console.error);
         }
     }
 
@@ -664,6 +741,7 @@ function salvarDadosDoUsuario(cpfUsuario = null) {
             rendimentos: rendimentosData.map(({ proprietarioCpf, ...rest }) => rest)
         };
         localStorage.setItem(chave, JSON.stringify(dados));
+        syncFirebaseDados(usuarioLogado.cpf, dados);
     } else {
         // Se for gerência, salvar nos dados do usuário correto
         if (filtroAtual === 'todos') {
@@ -677,6 +755,7 @@ function salvarDadosDoUsuario(cpfUsuario = null) {
                 rendimentos: rendimentosData.filter(r => r.proprietarioCpf === filtroAtual).map(({ proprietarioCpf, ...rest }) => rest)
             };
             localStorage.setItem(chave, JSON.stringify(dados));
+            syncFirebaseDados(filtroAtual, dados);
         }
     }
 }
@@ -707,6 +786,7 @@ function salvarDadosSeparados() {
             rendimentos: dadosPorUsuario[cpf].rendimentos.map(({ proprietarioCpf, ...rest }) => rest)
         };
         localStorage.setItem(chave, JSON.stringify(dados));
+        syncFirebaseDados(cpf, dados);
     });
 }
 

@@ -10,6 +10,7 @@ include:
   - index.html
   - app.js
   - styles.css
+  - firebase-config.js
   - RESETAR-SISTEMA.html
 
 # Excluir arquivos desnecessários da build
