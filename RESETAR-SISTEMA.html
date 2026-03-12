@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resetar Sistema de Contabilidade</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2rem;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: #856404;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: #0c5460;
+            text-align: left;
+        }
+        
+        .info h3 {
+            margin-bottom: 10px;
+            color: #17a2b8;
+        }
+        
+        .info code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #e83e8c;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.danger {
+            background: #dc3545;
+        }
+        
+        .success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: #155724;
+            display: none;
+        }
+        
+        .success.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Resetar Sistema</h1>
+        
+        <div class="warning">
+            <strong>⚠️ ATENÇÃO!</strong><br>
+            Esta página permite resetar completamente o sistema de contabilidade.
+            <br><br>
+            <strong>Todos os dados serão perdidos permanentemente!</strong>
+        </div>
+        
+        <div class="info">
+            <h3>📋 O que será feito:</h3>
+            <ul style="list-style-position: inside;">
+                <li>Limpar todos os dados do localStorage</li>
+                <li>Remover todos os usuários cadastrados</li>
+                <li>Remover todas as distribuições de lucros</li>
+                <li>Remover todos os rendimentos financeiros</li>
+                <li>Criar novo usuário Administrador padrão</li>
+            </ul>
+        </div>
+        
+        <div class="info">
+            <h3>🔑 Após o reset:</h3>
+            <p><strong>Credenciais do Admin:</strong></p>
+            <p>CPF: <code>00000000000</code> (11 zeros)</p>
+            <p>Senha: <code>admin123</code></p>
+        </div>
+        
+        <button class="danger" onclick="resetarSistema()">
+            🗑️ RESETAR TODO O SISTEMA
+        </button>
+        
+        <button class="secondary" onclick="voltarParaSistema()">
+            ← Voltar sem Resetar
+        </button>
+        
+        <div class="success" id="success-message">
+            <strong>✅ Sistema Resetado com Sucesso!</strong><br><br>
+            O usuário Administrador foi criado.<br>
+            Use as credenciais acima para fazer login.<br><br>
+            <button onclick="voltarParaSistema()">Ir para o Sistema</button>
+        </div>
+    </div>
+    
+    <script>
+        function resetarSistema() {
+            const confirmacao = confirm(
+                '⚠️ CONFIRMAÇÃO FINAL ⚠️\n\n' +
+                'Você tem CERTEZA que deseja resetar o sistema?\n\n' +
+                'Todos os dados serão PERDIDOS PERMANENTEMENTE!\n\n' +
+                'Esta ação NÃO PODE ser desfeita!'
+            );
+            
+            if (!confirmacao) {
+                return;
+            }
+            
+            // Limpar TUDO do localStorage
+            localStorage.clear();
+            
+            // Criar admin padrão
+            const todosOsSocios = [{
+                id: Date.now(),
+                nome: 'Administrador',
+                cpf: '00000000000',
+                senha: 'admin123',
+                role: 'gerencia'
+            }];
+            
+            localStorage.setItem('todosOsSocios', JSON.stringify(todosOsSocios));
+            
+            // Mostrar mensagem de sucesso
+            document.getElementById('success-message').classList.add('show');
+            
+            console.log('✅ Sistema resetado com sucesso!');
+            console.log('👤 Admin criado: CPF 00000000000 / Senha: admin123');
+        }
+        
+        function voltarParaSistema() {
+            window.location.href = 'index.html';
+        }
+        
+        // Atalho de teclado: ESC para voltar
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                voltarParaSistema();
+            }
+        });
+    </script>
+</body>
+</html>
