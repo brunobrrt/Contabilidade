@@ -8,10 +8,11 @@
 // 6. Copie o objeto firebaseConfig gerado e cole abaixo substituindo os valores
 
 window.firebaseConfig = {
-    apiKey: "PREENCHA_AQUI",
-    authDomain: "PREENCHA_AQUI.firebaseapp.com",
-    projectId: "PREENCHA_AQUI",
-    storageBucket: "PREENCHA_AQUI.appspot.com",
-    messagingSenderId: "PREENCHA_AQUI",
-    appId: "PREENCHA_AQUI"
+    apiKey: "AIzaSyBloLCULnravGmDtTKaTjpeWaKzt_6LU_c",
+    authDomain: "contabilidade-b568c.firebaseapp.com",
+    projectId: "contabilidade-b568c",
+    storageBucket: "contabilidade-b568c.firebasestorage.app",
+    messagingSenderId: "1048916585304",
+    appId: "1:1048916585304:web:35eb47b58d0d0b6ce6932d",
+    measurementId: "G-81T555MS7L"
 };
