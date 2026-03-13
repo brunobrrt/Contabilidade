@@ -937,7 +937,7 @@ function renderLucrosTable() {
         
         row.innerHTML = `
             <td>${podeEditar
-                ? `<input type="date" value="${item.data}" onchange="updateLucroData(${item.id}, 'data', this.value)">`
+                ? `<input type="text" value="${item.data ? formatarDataBR(item.data) : ''}" placeholder="DD/MM/AAAA" maxlength="10" class="input-data-br" oninput="mascaraData(this)" onchange="updateLucroData(${item.id}, 'data', converterDataParaISO(this.value))">`
                 : `<span class="date-display">${formatarDataBR(item.data)}</span>`
             }</td>
             <td>
@@ -1034,7 +1034,7 @@ function renderRendimentosTable() {
         
         row.innerHTML = `
             <td>${podeEditar
-                ? `<input type="month" value="${item.mes}" onchange="updateRendimentoData(${item.id}, 'mes', this.value)">`
+                ? `<input type="text" value="${item.mes ? formatarMesBR(item.mes) : ''}" placeholder="MM/AAAA" maxlength="7" class="input-mes-br" oninput="mascaraMes(this)" onchange="updateRendimentoData(${item.id}, 'mes', converterMesParaISO(this.value))">`
                 : `<span class="date-display">${formatarMesBR(item.mes)}</span>`
             }</td>
             <td><input type="text" value="${item.banco}" ${podeEditar ? '' : 'disabled'} placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
@@ -1084,6 +1084,42 @@ function formatarMesBR(mes) {
     const partes = mes.split('-');
     if (partes.length !== 2) return mes;
     return `${partes[1]}/${partes[0]}`;
+}
+
+// Converte DD/MM/AAAA → YYYY-MM-DD (para salvar no backend)
+function converterDataParaISO(data) {
+    if (!data) return '';
+    const partes = data.split('/');
+    if (partes.length !== 3 || partes[2].length !== 4) return '';
+    return `${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`;
+}
+
+// Converte MM/AAAA → YYYY-MM (para salvar no backend)
+function converterMesParaISO(mes) {
+    if (!mes) return '';
+    const partes = mes.split('/');
+    if (partes.length !== 2 || partes[1].length !== 4) return '';
+    return `${partes[1]}-${partes[0].padStart(2,'0')}`;
+}
+
+// Aplica máscara DD/MM/AAAA enquanto o usuário digita
+function mascaraData(input) {
+    let v = input.value.replace(/\D/g, '').substring(0, 8);
+    if (v.length >= 5) {
+        v = v.substring(0,2) + '/' + v.substring(2,4) + '/' + v.substring(4);
+    } else if (v.length >= 3) {
+        v = v.substring(0,2) + '/' + v.substring(2);
+    }
+    input.value = v;
+}
+
+// Aplica máscara MM/AAAA enquanto o usuário digita
+function mascaraMes(input) {
+    let v = input.value.replace(/\D/g, '').substring(0, 6);
+    if (v.length >= 3) {
+        v = v.substring(0,2) + '/' + v.substring(2);
+    }
+    input.value = v;
 }
 
 // ===== FUNÇÃO DE LIMPEZA DE DADOS =====
