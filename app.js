@@ -937,7 +937,13 @@ function renderLucrosTable() {
         
         row.innerHTML = `
             <td>${podeEditar
-                ? `<input type="text" value="${item.data ? formatarDataBR(item.data) : ''}" placeholder="DD/MM/AAAA" maxlength="10" class="input-data-br" oninput="mascaraData(this)" onchange="updateLucroData(${item.id}, 'data', converterDataParaISO(this.value))">`
+                ? `<div class="date-input-wrapper">
+                    <input type="text" value="${item.data ? formatarDataBR(item.data) : ''}" placeholder="DD/MM/AAAA" maxlength="10" class="input-data-br" oninput="mascaraData(this)" onchange="updateLucroData(${item.id}, 'data', converterDataParaISO(this.value))">
+                    <span class="btn-calendar-wrap" title="Abrir calendário">
+                        <span class="btn-calendar-icon">📅</span>
+                        <input type="date" class="input-date-hidden" value="${item.data || ''}" onchange="selecionarData(this)">
+                    </span>
+                  </div>`
                 : `<span class="date-display">${formatarDataBR(item.data)}</span>`
             }</td>
             <td>
@@ -1034,7 +1040,13 @@ function renderRendimentosTable() {
         
         row.innerHTML = `
             <td>${podeEditar
-                ? `<input type="text" value="${item.mes ? formatarMesBR(item.mes) : ''}" placeholder="MM/AAAA" maxlength="7" class="input-mes-br" oninput="mascaraMes(this)" onchange="updateRendimentoData(${item.id}, 'mes', converterMesParaISO(this.value))">`
+                ? `<div class="date-input-wrapper">
+                    <input type="text" value="${item.mes ? formatarMesBR(item.mes) : ''}" placeholder="MM/AAAA" maxlength="7" class="input-mes-br" oninput="mascaraMes(this)" onchange="updateRendimentoData(${item.id}, 'mes', converterMesParaISO(this.value))">
+                    <span class="btn-calendar-wrap" title="Abrir calendário">
+                        <span class="btn-calendar-icon">📅</span>
+                        <input type="month" class="input-date-hidden" value="${item.mes || ''}" onchange="selecionarMes(this)">
+                    </span>
+                  </div>`
                 : `<span class="date-display">${formatarMesBR(item.mes)}</span>`
             }</td>
             <td><input type="text" value="${item.banco}" ${podeEditar ? '' : 'disabled'} placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
@@ -1120,6 +1132,24 @@ function mascaraMes(input) {
         v = v.substring(0,2) + '/' + v.substring(2);
     }
     input.value = v;
+}
+
+// Callback do picker nativo de data — atualiza o campo texto e salva
+function selecionarData(hiddenInput) {
+    const iso = hiddenInput.value; // YYYY-MM-DD
+    const wrapper = hiddenInput.closest('.date-input-wrapper');
+    const textInput = wrapper.querySelector('.input-data-br');
+    textInput.value = formatarDataBR(iso);
+    textInput.dispatchEvent(new Event('change'));
+}
+
+// Callback do picker nativo de mês — atualiza o campo texto e salva
+function selecionarMes(hiddenInput) {
+    const iso = hiddenInput.value; // YYYY-MM
+    const wrapper = hiddenInput.closest('.date-input-wrapper');
+    const textInput = wrapper.querySelector('.input-mes-br');
+    textInput.value = formatarMesBR(iso);
+    textInput.dispatchEvent(new Event('change'));
 }
 
 // ===== FUNÇÃO DE LIMPEZA DE DADOS =====
