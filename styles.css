@@ -760,6 +760,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
 .hint-text:hover { color: var(--accent-hover); }
 
 .socio-beneficiario-text { font-weight: 500; color: var(--text-dark); display: inline-block; padding: 3px 0; }
+.date-display { font-weight: 500; color: var(--text-dark); display: inline-block; padding: 3px 0; letter-spacing: 0.02em; }
 
 /*  Toast / Mensagem de sucesso  */
 .success-message {

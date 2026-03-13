@@ -936,7 +936,10 @@ function renderLucrosTable() {
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
         
         row.innerHTML = `
-            <td><input type="date" value="${item.data}" ${podeEditar ? '' : 'disabled'} onchange="updateLucroData(${item.id}, 'data', this.value)"></td>
+            <td>${podeEditar
+                ? `<input type="date" value="${item.data}" onchange="updateLucroData(${item.id}, 'data', this.value)">`
+                : `<span class="date-display">${formatarDataBR(item.data)}</span>`
+            }</td>
             <td>
                 ${socioBeneficiarioHTML}
             </td>
@@ -1030,7 +1033,10 @@ function renderRendimentosTable() {
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
         
         row.innerHTML = `
-            <td><input type="month" value="${item.mes}" ${podeEditar ? '' : 'disabled'} onchange="updateRendimentoData(${item.id}, 'mes', this.value)"></td>
+            <td>${podeEditar
+                ? `<input type="month" value="${item.mes}" onchange="updateRendimentoData(${item.id}, 'mes', this.value)">`
+                : `<span class="date-display">${formatarMesBR(item.mes)}</span>`
+            }</td>
             <td><input type="text" value="${item.banco}" ${podeEditar ? '' : 'disabled'} placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
             <td><input type="number" step="0.01" value="${item.valorRendimento}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
             <td><input type="number" step="0.01" value="${item.irRetido}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
@@ -1062,6 +1068,22 @@ function formatCurrency(value) {
 function formatarCPFExibicao(cpf) {
     if (cpf === '00000000000') return 'Admin';
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+}
+
+// Converte YYYY-MM-DD → DD/MM/AAAA
+function formatarDataBR(data) {
+    if (!data) return '-';
+    const partes = data.split('-');
+    if (partes.length !== 3) return data;
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+}
+
+// Converte YYYY-MM → MM/AAAA
+function formatarMesBR(mes) {
+    if (!mes) return '-';
+    const partes = mes.split('-');
+    if (partes.length !== 2) return mes;
+    return `${partes[1]}/${partes[0]}`;
 }
 
 // ===== FUNÇÃO DE LIMPEZA DE DADOS =====
@@ -1128,7 +1150,7 @@ function exportToExcel(type) {
         const data = lucrosData.map(item => {
             const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
             const base = [
-                item.data || '',
+                formatarDataBR(item.data),
                 getNomeSocioBeneficiario(item),
                 item.descricao || '',
                 item.valor.toFixed(2),
@@ -1152,7 +1174,7 @@ function exportToExcel(type) {
         const data = rendimentosData.map(item => {
             const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
             const base = [
-                item.mes || '',
+                formatarMesBR(item.mes),
                 item.banco || '',
                 item.valorRendimento.toFixed(2),
                 item.irRetido.toFixed(2),
@@ -1202,7 +1224,7 @@ function exportarEmpresaSelecionada() {
     if (lucros.length > 0) {
         const headers = ['Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
         const data = lucros.map(item => [
-            item.data || '',
+            formatarDataBR(item.data),
             item.socioBeneficiario || '',
             item.descricao || '',
             (parseFloat(item.valor) || 0).toFixed(2),
@@ -1216,7 +1238,7 @@ function exportarEmpresaSelecionada() {
         setTimeout(() => {
             const headers = ['Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações'];
             const data = rendimentos.map(item => [
-                item.mes || '',
+                formatarMesBR(item.mes),
                 item.banco || '',
                 (parseFloat(item.valorRendimento) || 0).toFixed(2),
                 (parseFloat(item.irRetido) || 0).toFixed(2),
@@ -1263,7 +1285,7 @@ function exportarTodosOsDados() {
         const headers = ['Empresa', 'Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
         const data = todosLucros.map(item => [
             item.proprietarioNome || '',
-            item.data || '',
+            formatarDataBR(item.data),
             getNomeSocioBeneficiario(item),
             item.descricao || '',
             item.valor.toFixed(2),
@@ -1277,7 +1299,7 @@ function exportarTodosOsDados() {
             const headers = ['Empresa', 'Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações'];
             const data = todosRendimentos.map(item => [
                 item.proprietarioNome || '',
-                item.mes || '',
+                formatarMesBR(item.mes),
                 item.banco || '',
                 item.valorRendimento.toFixed(2),
                 item.irRetido.toFixed(2),
