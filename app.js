@@ -6,6 +6,9 @@ let lucrosData = [];
 let rendimentosData = [];
 let filtroAtual = 'todos'; // Para gerência
 let db = null; // Firebase Firestore
+// Filtros de data por aba
+let filtroLucros  = { de: '', ate: '' };
+let filtroRendimentos = { mes: '', ano: '' };
 
 // ===== INICIALIZAÇÃO =====
 window.addEventListener('DOMContentLoaded', async () => {
@@ -867,6 +870,19 @@ function updateLucroData(id, field, value) {
     }
 }
 
+function aplicarFiltroLucros() {
+    filtroLucros.de  = document.getElementById('filtro-lucros-de').value;
+    filtroLucros.ate = document.getElementById('filtro-lucros-ate').value;
+    renderLucrosTable();
+}
+
+function limparFiltroLucros() {
+    filtroLucros = { de: '', ate: '' };
+    document.getElementById('filtro-lucros-de').value = '';
+    document.getElementById('filtro-lucros-ate').value = '';
+    renderLucrosTable();
+}
+
 function renderLucrosTable() {
     const tbody = document.getElementById('lucros-tbody');
     tbody.innerHTML = '';
@@ -874,16 +890,21 @@ function renderLucrosTable() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     const isGerencia = userLogado.role === 'gerencia';
     const podeEditar = !isGerencia || filtroAtual !== 'todos';
+
+    // Aplicar filtro de período
+    let dados = lucrosData;
+    if (filtroLucros.de)  dados = dados.filter(i => i.data && i.data >= filtroLucros.de);
+    if (filtroLucros.ate) dados = dados.filter(i => i.data && i.data <= filtroLucros.ate);
     
-    if (lucrosData.length === 0 && podeEditar) {
+    if (dados.length === 0 && podeEditar) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
-            <div class="empty-row-hint">📋 Nenhum registro ainda. Clique em <strong>➕ Adicionar Registro</strong> para começar.</div>
+            <div class="empty-row-hint">📋 Nenhum registro encontrado. ${lucrosData.length === 0 ? 'Clique em <strong>➕ Adicionar Registro</strong> para começar.' : 'Tente ajustar o filtro de data.'}</div>
         </td></tr>`;
-        updateLucrosTotal();
+        updateLucrosTotalFiltrado(dados);
         return;
     }
 
-    lucrosData.forEach(item => {
+    dados.forEach(item => {
         const row = document.createElement('tr');
         
         const nomeBeneficiario = getNomeSocioBeneficiario(item);
@@ -961,7 +982,16 @@ function renderLucrosTable() {
 }
 
 function updateLucrosTotal() {
-    const total = lucrosData.reduce((sum, item) => sum + (item.valor || 0), 0);
+    // Respeita o filtro de período ativo
+    let dados = lucrosData;
+    if (filtroLucros.de)  dados = dados.filter(i => i.data && i.data >= filtroLucros.de);
+    if (filtroLucros.ate) dados = dados.filter(i => i.data && i.data <= filtroLucros.ate);
+    const total = dados.reduce((sum, item) => sum + (item.valor || 0), 0);
+    document.getElementById('lucros-total').textContent = formatCurrency(total);
+}
+
+function updateLucrosTotalFiltrado(dados) {
+    const total = dados.reduce((sum, item) => sum + (item.valor || 0), 0);
     document.getElementById('lucros-total').textContent = formatCurrency(total);
 }
 
@@ -1029,6 +1059,19 @@ function updateRendimentoMes(id, type, value) {
     updateRendimentosTotal();
 }
 
+function aplicarFiltroRendimentos() {
+    filtroRendimentos.mes = document.getElementById('filtro-rend-mes').value;
+    filtroRendimentos.ano = document.getElementById('filtro-rend-ano').value;
+    renderRendimentosTable();
+}
+
+function limparFiltroRendimentos() {
+    filtroRendimentos = { mes: '', ano: '' };
+    document.getElementById('filtro-rend-mes').value = '';
+    document.getElementById('filtro-rend-ano').value = '';
+    renderRendimentosTable();
+}
+
 function renderRendimentosTable() {
     const tbody = document.getElementById('rendimentos-tbody');
     tbody.innerHTML = '';
@@ -1037,12 +1080,17 @@ function renderRendimentosTable() {
     const isGerencia = userLogado.role === 'gerencia';
     // Admin sempre pode editar/excluir; sócio também (dados próprios)
     const podeEditar = true;
+
+    // Aplicar filtro de mês/ano
+    let dados = rendimentosData;
+    if (filtroRendimentos.ano) dados = dados.filter(i => i.mes && i.mes.startsWith(filtroRendimentos.ano));
+    if (filtroRendimentos.mes) dados = dados.filter(i => i.mes && i.mes.split('-')[1] === filtroRendimentos.mes);
     
-    if (rendimentosData.length === 0) {
+    if (dados.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
-            <div class="empty-row-hint">📋 Nenhum registro ainda. Clique em <strong>➕ Adicionar Registro</strong> para começar.</div>
+            <div class="empty-row-hint">📋 Nenhum registro encontrado. ${rendimentosData.length === 0 ? 'Clique em <strong>➕ Adicionar Registro</strong> para começar.' : 'Tente ajustar o filtro.'}</div>
         </td></tr>`;
-        updateRendimentosTotal();
+        updateRendimentosTotalFiltrado(dados);
         return;
     }
 
@@ -1053,7 +1101,7 @@ function renderRendimentosTable() {
     ];
     const anosPreDef = [2018,2019,2020,2021,2022,2023,2024,2025,2026,2027,2028,2029,2030];
 
-    rendimentosData.forEach(item => {
+    dados.forEach(item => {
         const row = document.createElement('tr');
         
         const proprietario = isGerencia && filtroAtual === 'todos' 
@@ -1089,13 +1137,19 @@ function renderRendimentosTable() {
         tbody.appendChild(row);
     });
     
-    updateRendimentosTotal();
+    updateRendimentosTotalFiltrado(dados);
 }
 
 function updateRendimentosTotal() {
-    const totalRendimento = rendimentosData.reduce((sum, item) => sum + (item.valorRendimento || 0), 0);
-    const totalIR = rendimentosData.reduce((sum, item) => sum + (item.irRetido || 0), 0);
-    
+    let dados = rendimentosData;
+    if (filtroRendimentos.ano) dados = dados.filter(i => i.mes && i.mes.startsWith(filtroRendimentos.ano));
+    if (filtroRendimentos.mes) dados = dados.filter(i => i.mes && i.mes.split('-')[1] === filtroRendimentos.mes);
+    updateRendimentosTotalFiltrado(dados);
+}
+
+function updateRendimentosTotalFiltrado(dados) {
+    const totalRendimento = dados.reduce((sum, item) => sum + (item.valorRendimento || 0), 0);
+    const totalIR = dados.reduce((sum, item) => sum + (item.irRetido || 0), 0);
     document.getElementById('rendimentos-total').textContent = formatCurrency(totalRendimento);
     document.getElementById('ir-total').textContent = formatCurrency(totalIR);
 }

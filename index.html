@@ -95,6 +95,15 @@
                     <button class="btn btn-danger" onclick="clearAllData('lucros')">Limpar Tudo</button>
                 </div>
             </div>
+            <!-- Filtro de período -->
+            <div class="filtro-data-container">
+                <span class="filtro-data-label">📅 Filtrar por período:</span>
+                <label>De</label>
+                <input type="date" id="filtro-lucros-de" onchange="aplicarFiltroLucros()">
+                <label>Até</label>
+                <input type="date" id="filtro-lucros-ate" onchange="aplicarFiltroLucros()">
+                <button class="btn btn-small btn-secondary" onclick="limparFiltroLucros()">&#x2715; Limpar Filtro</button>
+            </div>
             <div class="table-container">
                 <table id="lucros-table">
                     <thead>
@@ -131,6 +140,36 @@
                     <button class="btn btn-secondary" onclick="exportToExcel('rendimentos')"> Exportar Excel</button>
                     <button class="btn btn-danger" onclick="clearAllData('rendimentos')">Limpar Tudo</button>
                 </div>
+            </div>
+            <!-- Filtro de mês/ano -->
+            <div class="filtro-data-container">
+                <span class="filtro-data-label">📅 Filtrar por:</span>
+                <label>Mês</label>
+                <select id="filtro-rend-mes" onchange="aplicarFiltroRendimentos()">
+                    <option value="">Todos</option>
+                    <option value="01">Janeiro</option>
+                    <option value="02">Fevereiro</option>
+                    <option value="03">Março</option>
+                    <option value="04">Abril</option>
+                    <option value="05">Maio</option>
+                    <option value="06">Junho</option>
+                    <option value="07">Julho</option>
+                    <option value="08">Agosto</option>
+                    <option value="09">Setembro</option>
+                    <option value="10">Outubro</option>
+                    <option value="11">Novembro</option>
+                    <option value="12">Dezembro</option>
+                </select>
+                <label>Ano</label>
+                <select id="filtro-rend-ano" onchange="aplicarFiltroRendimentos()">
+                    <option value="">Todos</option>
+                    <option>2018</option><option>2019</option><option>2020</option>
+                    <option>2021</option><option>2022</option><option>2023</option>
+                    <option>2024</option><option>2025</option><option>2026</option>
+                    <option>2027</option><option>2028</option><option>2029</option>
+                    <option>2030</option>
+                </select>
+                <button class="btn btn-small btn-secondary" onclick="limparFiltroRendimentos()">&#x2715; Limpar Filtro</button>
             </div>
             <div class="table-container">
                 <table id="rendimentos-table">
