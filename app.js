@@ -1013,21 +1013,45 @@ function updateRendimentoData(id, field, value) {
     }
 }
 
+function updateRendimentoMes(id, type, value) {
+    const item = rendimentosData.find(r => r.id === id);
+    if (!item) return;
+    let year = '', month = '';
+    if (item.mes) {
+        const parts = item.mes.split('-');
+        year = parts[0] || '';
+        month = parts[1] || '';
+    }
+    if (type === 'mes') month = value;
+    if (type === 'ano') year = value;
+    item.mes = year && month ? `${year}-${month}` : '';
+    salvarDadosDoUsuario();
+    updateRendimentosTotal();
+}
+
 function renderRendimentosTable() {
     const tbody = document.getElementById('rendimentos-tbody');
     tbody.innerHTML = '';
     
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     const isGerencia = userLogado.role === 'gerencia';
-    const podeEditar = !isGerencia || filtroAtual !== 'todos';
+    // Admin sempre pode editar/excluir; sócio também (dados próprios)
+    const podeEditar = true;
     
-    if (rendimentosData.length === 0 && podeEditar) {
+    if (rendimentosData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
             <div class="empty-row-hint">📋 Nenhum registro ainda. Clique em <strong>➕ Adicionar Registro</strong> para começar.</div>
         </td></tr>`;
         updateRendimentosTotal();
         return;
     }
+
+    const mesesNomes = [
+        ['01','Janeiro'],['02','Fevereiro'],['03','Março'],['04','Abril'],
+        ['05','Maio'],['06','Junho'],['07','Julho'],['08','Agosto'],
+        ['09','Setembro'],['10','Outubro'],['11','Novembro'],['12','Dezembro']
+    ];
+    const anosPreDef = [2018,2019,2020,2021,2022,2023,2024,2025,2026,2027,2028,2029,2030];
 
     rendimentosData.forEach(item => {
         const row = document.createElement('tr');
@@ -1037,23 +1061,30 @@ function renderRendimentosTable() {
             : null;
         
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
+
+        let mesPart = '', anoPart = '';
+        if (item.mes) {
+            const parts = item.mes.split('-');
+            anoPart = parts[0] || '';
+            mesPart = parts[1] || '';
+        }
+        const mesOpts = `<option value="">Mês</option>` +
+            mesesNomes.map(([v,n]) => `<option value="${v}"${mesPart===v?' selected':''}>${n}</option>`).join('');
+        const anoOpts = `<option value="">Ano</option>` +
+            anosPreDef.map(a => `<option value="${a}"${anoPart===String(a)?' selected':''}>${a}</option>`).join('');
         
         row.innerHTML = `
-            <td>${podeEditar
-                ? `<div class="date-input-wrapper">
-                    <input type="text" value="${item.mes ? formatarMesBR(item.mes) : ''}" placeholder="MM/AAAA" maxlength="7" class="input-mes-br" oninput="mascaraMes(this)" onchange="updateRendimentoData(${item.id}, 'mes', converterMesParaISO(this.value))">
-                    <span class="btn-calendar-wrap" title="Abrir calendário">
-                        <span class="btn-calendar-icon">📅</span>
-                        <input type="month" class="input-date-hidden" value="${item.mes || ''}" onchange="selecionarMes(this)">
-                    </span>
-                  </div>`
-                : `<span class="date-display">${formatarMesBR(item.mes)}</span>`
-            }</td>
-            <td><input type="text" value="${item.banco}" ${podeEditar ? '' : 'disabled'} placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
-            <td><input type="number" step="0.01" value="${item.valorRendimento}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
-            <td><input type="number" step="0.01" value="${item.irRetido}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
-            <td><input type="text" value="${item.observacoes}" ${podeEditar ? '' : 'disabled'} placeholder="Observações (opcional)" onchange="updateRendimentoData(${item.id}, 'observacoes', this.value)"></td>
-            <td>${podeEditar ? `<button class="btn btn-delete" onclick="deleteRendimentoRow(${item.id})">🗑️ Excluir</button>` : '-'}</td>
+            <td>
+                <div style="display:flex;gap:4px;">
+                    <select style="flex:1.8;" onchange="updateRendimentoMes(${item.id},'mes',this.value)">${mesOpts}</select>
+                    <select style="flex:1;" onchange="updateRendimentoMes(${item.id},'ano',this.value)">${anoOpts}</select>
+                </div>
+            </td>
+            <td><input type="text" value="${item.banco}" placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
+            <td><input type="number" step="0.01" value="${item.valorRendimento}" placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
+            <td><input type="number" step="0.01" value="${item.irRetido}" placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
+            <td><input type="text" value="${item.observacoes}" placeholder="Observações (opcional)" onchange="updateRendimentoData(${item.id}, 'observacoes', this.value)"></td>
+            <td><button class="btn btn-delete" onclick="deleteRendimentoRow(${item.id})">🗑️ Excluir</button></td>
         `;
         tbody.appendChild(row);
     });
