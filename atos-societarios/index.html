@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Atos Societários</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- ===== LOADING FIREBASE ===== -->
+    <div id="firebase-loading" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,10,20,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
+        <div style="font-size:3rem;margin-bottom:1rem;">📋</div>
+        <div style="color:white;font-size:1.2rem;font-weight:600;margin-bottom:1.5rem;">Conectando ao sistema...</div>
+        <div style="width:44px;height:44px;border:4px solid rgba(255,255,255,0.2);border-top-color:#b8860b;border-radius:50%;animation:fb-spin 0.7s linear infinite;"></div>
+        <style>@keyframes fb-spin{to{transform:rotate(360deg)}}</style>
+    </div>
+
+    <!-- ===== TELA DE LOGIN ===== -->
+    <div id="login-screen" class="auth-screen">
+        <div class="auth-container">
+            <div class="auth-header">
+                <span class="auth-logo">📋</span>
+                <h1>Atos Societários</h1>
+                <p>Sistema de Gestão Empresarial</p>
+            </div>
+            <div class="auth-form">
+                <h2>Acesso ao Sistema</h2>
+                <div class="input-group">
+                    <label>CPF</label>
+                    <input type="text" id="login-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11"
+                        inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onkeypress="if(event.key==='Enter') fazerLogin()">
+                </div>
+                <div class="input-group">
+                    <label>Senha</label>
+                    <input type="password" id="login-senha" placeholder="Senha de acesso"
+                        onkeypress="if(event.key==='Enter') fazerLogin()">
+                </div>
+                <button class="btn btn-primary" onclick="fazerLogin()">Entrar</button>
+                <p class="auth-info">Acesso restrito. Contate o escritório para criar uma conta.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SISTEMA PRINCIPAL ===== -->
+    <div id="main-system" class="container" style="display:none;">
+
+        <!-- Top Bar -->
+        <div class="topbar">
+            <div class="topbar-brand">
+                <span class="brand-logo">📋</span>
+                <div class="brand-text">
+                    <span class="brand-name">Atos Societários</span>
+                    <span class="brand-sub">Sistema de Gestão Empresarial</span>
+                </div>
+            </div>
+            <div class="topbar-user">
+                <span id="usuario-logado" class="user-name"></span>
+                <span id="usuario-role" class="role-badge"></span>
+                <button id="btn-admin" class="btn-topbar-gold" onclick="abrirPainelAdmin()" style="display:none;">⚙️ Administração</button>
+                <button class="btn-topbar" onclick="abrirModalNovoProcesso()">➕ Novo Processo</button>
+                <button class="btn-topbar-danger" onclick="fazerLogout()">Sair</button>
+            </div>
+        </div>
+
+        <!-- Navegação por abas -->
+        <nav class="tab-navigation">
+            <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+            <button class="tab-btn" data-tab="aberturas">🏢 Aberturas</button>
+            <button class="tab-btn" data-tab="alteracoes">✏️ Alterações</button>
+            <button class="tab-btn" data-tab="encerramentos">❌ Encerramentos</button>
+        </nav>
+
+        <!-- Filtro para Contabilidade -->
+        <div id="filtro-contabilidade" class="filtro-container" style="display:none;">
+            <div class="filtro-content">
+                <label>Filtrar por:</label>
+                <select id="filtro-status" onchange="aplicarFiltro()">
+                    <option value="todos">Todos os Status</option>
+                    <option value="pendente">Pendentes</option>
+                    <option value="em-andamento">Em Andamento</option>
+                    <option value="concluido">Concluídos</option>
+                </select>
+                <select id="filtro-cliente" onchange="aplicarFiltro()">
+                    <option value="todos">Todos os Clientes</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- ===== ABA: DASHBOARD ===== -->
+        <section id="dashboard-section" class="tab-content active">
+            <div class="section-header">
+                <div>
+                    <h2>📊 Dashboard</h2>
+                    <p>Visão geral dos processos</p>
+                </div>
+            </div>
+            <div class="dashboard-cards">
+                <div class="dash-card abertura">
+                    <span class="dash-card-number" id="dash-aberturas">0</span>
+                    <span class="dash-card-label">Aberturas</span>
+                </div>
+                <div class="dash-card alteracao">
+                    <span class="dash-card-number" id="dash-alteracoes">0</span>
+                    <span class="dash-card-label">Alterações</span>
+                </div>
+                <div class="dash-card encerramento">
+                    <span class="dash-card-number" id="dash-encerramentos">0</span>
+                    <span class="dash-card-label">Encerramentos</span>
+                </div>
+                <div class="dash-card">
+                    <span class="dash-card-number" id="dash-pendentes">0</span>
+                    <span class="dash-card-label">Pendentes</span>
+                </div>
+            </div>
+            <h3 style="color:var(--navy);margin-bottom:16px;font-size:0.95rem;">Processos Recentes</h3>
+            <div id="processos-recentes">
+                <div class="empty-state">
+                    <span class="empty-icon">📋</span>
+                    <p>Nenhum processo cadastrado</p>
+                    <p class="empty-hint">Clique em "Novo Processo" para começar</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== ABA: ABERTURAS ===== -->
+        <section id="aberturas-section" class="tab-content">
+            <div class="section-header">
+                <div>
+                    <h2>🏢 Abertura de Empresas</h2>
+                    <p>Processos de abertura em andamento</p>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="abrirModalNovoProcesso('abertura')">+ Novo Processo</button>
+                </div>
+            </div>
+            <div id="lista-aberturas">
+                <div class="empty-state">
+                    <span class="empty-icon">🏢</span>
+                    <p>Nenhuma abertura cadastrada</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== ABA: ALTERAÇÕES ===== -->
+        <section id="alteracoes-section" class="tab-content">
+            <div class="section-header">
+                <div>
+                    <h2>✏️ Alteração do Contrato Social</h2>
+                    <p>Processos de alteração em andamento</p>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="abrirModalNovoProcesso('alteracao')">+ Novo Processo</button>
+                </div>
+            </div>
+            <div id="lista-alteracoes">
+                <div class="empty-state">
+                    <span class="empty-icon">✏️</span>
+                    <p>Nenhuma alteração cadastrada</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== ABA: ENCERRAMENTOS ===== -->
+        <section id="encerramentos-section" class="tab-content">
+            <div class="section-header">
+                <div>
+                    <h2>❌ Encerramento de Empresas</h2>
+                    <p>Processos de encerramento em andamento</p>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="abrirModalNovoProcesso('encerramento')">+ Novo Processo</button>
+                </div>
+            </div>
+            <div id="lista-encerramentos">
+                <div class="empty-state">
+                    <span class="empty-icon">❌</span>
+                    <p>Nenhum encerramento cadastrado</p>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p>Sistema de Atos Societários — Dados armazenados no Firebase</p>
+        </footer>
+    </div>
+
+    <!-- ===== MODAL: NOVO PROCESSO ===== -->
+    <div id="modal-novo-processo" class="modal" style="display:none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <div>
+                    <h2>📋 Novo Processo</h2>
+                    <p class="modal-subtitle" id="novo-processo-subtitle">Preencha os dados do processo</p>
+                </div>
+                <button class="btn-close" onclick="fecharModalNovoProcesso()"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tipo de Ato -->
+                <div class="modal-section">
+                    <h3>Tipo de Ato</h3>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Ato Societário <span class="required">*</span></label>
+                            <select id="processo-tipo" onchange="atualizarFormularioProcesso()">
+                                <option value="">Selecione...</option>
+                                <option value="abertura">🏢 Abertura de Empresa</option>
+                                <option value="alteracao">✏️ Alteração do Contrato Social</option>
+                                <option value="encerramento">❌ Encerramento (Distrato)</option>
+                            </select>
+                        </div>
+                        <div class="form-field" id="campo-tipo-alteracao" style="display:none;">
+                            <label>Tipo de Alteração <span class="required">*</span></label>
+                            <select id="processo-subtipo">
+                                <option value="">Selecione...</option>
+                                <option value="razao-social">Alteração da Razão Social</option>
+                                <option value="endereco">Alteração do Endereço</option>
+                                <option value="quadro-societario">Alteração do Quadro Societário</option>
+                                <option value="objeto-social">Alteração do Objeto Social</option>
+                                <option value="clausulas">Alteração das Cláusulas Vigentes</option>
+                                <option value="transformacao">Transformação de Tipo Jurídico</option>
+                                <option value="capital">Alteração do Capital Social</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dados da Empresa -->
+                <div class="modal-section" id="secao-empresa">
+                    <h3>Dados da Empresa</h3>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Razão Social (opção 1) <span class="required">*</span></label>
+                            <input type="text" id="processo-razao1" placeholder="Nome da empresa">
+                        </div>
+                        <div class="form-field">
+                            <label>Razão Social (opção 2) <span class="optional">(alternativa)</span></label>
+                            <input type="text" id="processo-razao2" placeholder="Nome alternativo">
+                        </div>
+                    </div>
+                    <div class="form-field" style="margin-top:12px;">
+                        <label>Endereço da Sede <span class="required">*</span></label>
+                        <textarea id="processo-endereco" placeholder="Endereço completo da sede"></textarea>
+                    </div>
+                    <div class="form-field" style="margin-top:12px;">
+                        <label>IPTU</label>
+                        <div class="upload-area" onclick="document.getElementById('upload-iptu').click()">
+                            <input type="file" id="upload-iptu" accept="image/*,.pdf" onchange="handleUpload(this, 'arquivos-iptu')">
+                            <span class="upload-icon">📎</span>
+                            <span class="upload-text">Clique para enviar o comprovante de IPTU</span>
+                            <span class="upload-hint">PDF ou imagem (JPG, PNG)</span>
+                        </div>
+                        <div class="uploaded-files" id="arquivos-iptu"></div>
+                    </div>
+                </div>
+
+                <!-- Sócios -->
+                <div class="modal-section" id="secao-socios">
+                    <h3>Sócios</h3>
+                    <div id="lista-socios-form">
+                        <!-- Sócios dinâmicos serão inseridos aqui -->
+                    </div>
+                    <button class="btn btn-outline" onclick="adicionarSocioForm()" style="margin-top:8px;">+ Adicionar Sócio</button>
+                </div>
+
+                <!-- Capital Social -->
+                <div class="modal-section" id="secao-capital">
+                    <h3>Capital Social</h3>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Capital Social Total (R$) <span class="required">*</span></label>
+                            <input type="number" id="processo-capital" placeholder="0,00" step="0.01" min="0" oninput="recalcularParticipacoes()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Atividades -->
+                <div class="modal-section" id="secao-atividades">
+                    <h3>Atividades da Empresa</h3>
+                    <div class="form-field">
+                        <label>Atividade Principal <span class="required">*</span></label>
+                        <input type="text" id="processo-atividade-principal" placeholder="CNAE ou descrição da atividade principal">
+                    </div>
+                    <div class="form-field" style="margin-top:12px;">
+                        <label>Atividade Secundária</label>
+                        <input type="text" id="processo-atividade-secundaria" placeholder="CNAE ou descrição das atividades secundárias">
+                    </div>
+                </div>
+
+                <!-- Dados CNPJ -->
+                <div class="modal-section" id="secao-cnpj">
+                    <h3>Dados para Cartão CNPJ</h3>
+                    <div class="aviso-publico">
+                        ⚠️ Essas informações ficam disponíveis para consulta pública e podem gerar ligações indesejadas. Recomendamos criar um e-mail específico para a empresa.
+                    </div>
+                    <div class="form-row" style="margin-top:12px;">
+                        <div class="form-field">
+                            <label>Telefone</label>
+                            <input type="text" id="processo-telefone" placeholder="(00) 00000-0000">
+                        </div>
+                        <div class="form-field">
+                            <label>E-mail</label>
+                            <input type="email" id="processo-email-cnpj" placeholder="email@empresa.com.br">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Porte e Regime -->
+                <div class="modal-section" id="secao-regime">
+                    <h3>Porte e Regime Tributário</h3>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Porte da Empresa <span class="required">*</span></label>
+                            <select id="processo-porte">
+                                <option value="">Selecione...</option>
+                                <option value="ME">ME — R$ 80.000,01 a R$ 360.000,00</option>
+                                <option value="EPP">EPP — R$ 360.000,01 a R$ 4.800.000,00</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Regime Tributário <span class="required">*</span></label>
+                            <select id="processo-regime">
+                                <option value="">Selecione...</option>
+                                <option value="simples">Simples Nacional</option>
+                                <option value="presumido">Lucro Presumido</option>
+                                <option value="real">Lucro Real</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- E-mails dos Sócios -->
+                <div class="modal-section" id="secao-emails">
+                    <h3>E-mails dos Sócios</h3>
+                    <p style="font-size:0.82rem;color:var(--text-light);margin-bottom:12px;">Para envio do contrato social</p>
+                    <div id="lista-emails-socios">
+                        <!-- Campos de e-mail dinâmicos -->
+                    </div>
+                </div>
+
+                <!-- Valor -->
+                <div class="modal-section" id="secao-valor">
+                    <h3>Valor do Serviço</h3>
+                    <div class="valor-calculado" style="font-size:1.1rem;text-align:center;padding:16px;">
+                        💰 Valor da Abertura: <strong>R$ 1.000,00</strong>
+                        <br><span style="font-size:0.78rem;font-weight:400;opacity:0.8;">Inclui: elaboração do contrato, registros e taxas</span>
+                    </div>
+                </div>
+
+                <!-- Documentos Pessoais -->
+                <div class="modal-section" id="secao-documentos">
+                    <h3>Documentos Pessoais dos Sócios</h3>
+                    <div class="upload-area" onclick="document.getElementById('upload-docs').click()">
+                        <input type="file" id="upload-docs" accept="image/*,.pdf" multiple onchange="handleUpload(this, 'arquivos-docs')">
+                        <span class="upload-icon">📎</span>
+                        <span class="upload-text">Clique para enviar RG, CPF e outros documentos</span>
+                        <span class="upload-hint">PDF ou imagem — pode selecionar vários arquivos</span>
+                    </div>
+                    <div class="uploaded-files" id="arquivos-docs"></div>
+                </div>
+
+                <!-- Botões -->
+                <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                    <button class="btn btn-outline" onclick="fecharModalNovoProcesso()">Cancelar</button>
+                    <button class="btn btn-primary" onclick="salvarProcesso()">💾 Salvar Processo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: DETALHE DO PROCESSO ===== -->
+    <div id="modal-detalhe-processo" class="modal" style="display:none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <div>
+                    <h2 id="detalhe-titulo">Detalhe do Processo</h2>
+                    <p class="modal-subtitle" id="detalhe-subtitle"></p>
+                </div>
+                <button class="btn-close" onclick="fecharModalDetalhe()"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Pipeline de etapas -->
+                <div class="modal-section">
+                    <h3>Etapas do Processo</h3>
+                    <div class="pipeline" id="detalhe-pipeline">
+                        <!-- Etapas serão renderizadas dinamicamente -->
+                    </div>
+                </div>
+
+                <!-- Dados do processo -->
+                <div class="modal-section">
+                    <h3>Informações</h3>
+                    <div id="detalhe-info">
+                        <!-- Dados serão renderizados dinamicamente -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: ADMINISTRAÇÃO ===== -->
+    <div id="modal-admin" class="modal" style="display:none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>⚙️ Painel de Administração</h2>
+                <button class="btn-close" onclick="fecharPainelAdmin()"></button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <h3>Criar Novo Usuário</h3>
+                    <div class="form-group">
+                        <div class="edit-form-row">
+                            <input type="text" id="admin-nome" placeholder="Nome completo">
+                            <input type="text" id="admin-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                        </div>
+                        <div class="edit-form-row">
+                            <select id="admin-role">
+                                <option value="cliente">Cliente — acesso limitado</option>
+                                <option value="contabilidade">Contabilidade — acesso total</option>
+                            </select>
+                            <input type="password" id="admin-senha" placeholder="Senha inicial">
+                        </div>
+                        <button class="btn btn-primary" onclick="criarNovoUsuario()">Criar Usuário</button>
+                    </div>
+                </div>
+                <hr>
+                <div class="modal-section">
+                    <h3>Usuários Cadastrados</h3>
+                    <table id="admin-users-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>CPF</th>
+                                <th>Perfil</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
