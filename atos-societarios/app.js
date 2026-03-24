@@ -1,14 +1,15 @@
 /* ============================================================
    SISTEMA DE ATOS SOCIETÁRIOS — App Principal
+   Acesso via links: painel, formulário, status
    ============================================================ */
 
 // ===== ESTADO GLOBAL =====
-let usuarioAtual = null;
 let processos = [];
+let processoAtual = null; // processo sendo visualizado/editado
 let sociosFormCount = 0;
 let arquivosUpload = { iptu: [], docs: [] };
 
-// ===== CONFIGURAÇÃO DE ETAPAS POR TIPO =====
+// ===== CONFIGURAÇÕES =====
 const ETAPAS_POR_TIPO = {
     abertura: [
         { id: 'solicitacao', label: 'Solicitação' },
@@ -53,10 +54,16 @@ const SUBTIPOS_LABEL = {
     'capital': 'Capital Social'
 };
 
+const PORTES = { 'ME': 'ME — R$ 80.000,01 a R$ 360.000,00', 'EPP': 'EPP — R$ 360.000,01 a R$ 4.800.000,00' };
+const REGIMES = { 'simples': 'Simples Nacional', 'presumido': 'Lucro Presumido', 'real': 'Lucro Real' };
+const ESTADOS_CIVIS = { 'solteiro': 'Solteiro(a)', 'casado': 'Casado(a)', 'divorciado': 'Divorciado(a)', 'viuvo': 'Viúvo(a)', 'uniao-estavel': 'União Estável' };
+const REGIMES_CASAMENTO = { 'comunhao-parcial': 'Comunhão Parcial', 'comunhao-universal': 'Comunhão Universal', 'separacao-total': 'Separação Total', 'participacao-final': 'Participação Final nos Aquestos' };
+
 // ===== INICIALIZAÇÃO =====
 document.addEventListener('DOMContentLoaded', () => {
     inicializarFirebase();
-    configurarAbas();
+    carregarProcessos();
+    rotear();
 });
 
 function inicializarFirebase() {
@@ -64,11 +71,41 @@ function inicializarFirebase() {
         if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
             firebase.initializeApp(firebaseConfig);
         }
-        document.getElementById('firebase-loading').style.display = 'none';
     } catch (e) {
         console.warn('Firebase não configurado. Usando modo local.');
-        document.getElementById('firebase-loading').style.display = 'none';
     }
+}
+
+// ===== ROTEAMENTO =====
+function rotear() {
+    const params = new URLSearchParams(window.location.search);
+    document.getElementById('loading-screen').style.display = 'none';
+
+    if (params.has('painel')) {
+        mostrarView('view-painel');
+        configurarAbas();
+        renderizarPainel();
+    } else if (params.has('form')) {
+        const codigo = params.get('form');
+        mostrarView('view-form');
+        carregarFormulario(codigo);
+    } else if (params.has('status')) {
+        const codigo = params.get('status');
+        mostrarView('view-status');
+        carregarStatus(codigo);
+    } else {
+        // Sem parâmetro → mostrar painel (atalho para contabilidade)
+        mostrarView('view-painel');
+        configurarAbas();
+        renderizarPainel();
+    }
+}
+
+function mostrarView(viewId) {
+    ['view-painel', 'view-form', 'view-status', 'view-invalido'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
+    });
+    document.getElementById(viewId).style.display = 'block';
 }
 
 // ===== ABAS =====
@@ -83,78 +120,92 @@ function configurarAbas() {
     });
 }
 
-// ===== LOGIN / LOGOUT =====
-function fazerLogin() {
-    const cpf = document.getElementById('login-cpf').value.trim();
-    const senha = document.getElementById('login-senha').value;
-
-    if (!cpf || cpf.length !== 11) {
-        showToast('CPF deve ter 11 dígitos');
-        return;
+// ===== GERAR CÓDIGOS ÚNICOS =====
+function gerarCodigo(tamanho = 8) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let codigo = '';
+    for (let i = 0; i < tamanho; i++) {
+        codigo += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    if (!senha) {
-        showToast('Digite sua senha');
-        return;
-    }
-
-    // TODO: Integrar com Firebase Auth
-    // Por enquanto, simulação
-    usuarioAtual = {
-        cpf: cpf,
-        nome: cpf === '00000000000' ? 'Administrador' : 'Usuário',
-        role: cpf === '00000000000' ? 'contabilidade' : 'cliente'
-    };
-
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('main-system').style.display = 'block';
-    document.getElementById('usuario-logado').textContent = usuarioAtual.nome;
-
-    const roleEl = document.getElementById('usuario-role');
-    roleEl.textContent = usuarioAtual.role === 'contabilidade' ? '⭐ CONTABILIDADE' : '👤 CLIENTE';
-    roleEl.className = 'role-badge ' + usuarioAtual.role;
-
-    if (usuarioAtual.role === 'contabilidade') {
-        document.getElementById('btn-admin').style.display = 'inline-flex';
-        document.getElementById('filtro-contabilidade').style.display = 'block';
-    }
-
-    showToast('Bem-vindo, ' + usuarioAtual.nome + '!');
+    return codigo;
 }
 
-function fazerLogout() {
-    if (!confirm('Deseja sair do sistema?')) return;
-    usuarioAtual = null;
-    document.getElementById('main-system').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('login-cpf').value = '';
-    document.getElementById('login-senha').value = '';
-    document.getElementById('btn-admin').style.display = 'none';
-    document.getElementById('filtro-contabilidade').style.display = 'none';
+function gerarLinks(processoId) {
+    let codigoForm, codigoStatus;
+    do { codigoForm = gerarCodigo(10); } while (existeCodigo(codigoForm));
+    do { codigoStatus = gerarCodigo(10); } while (existeCodigo(codigoStatus));
+    return { form: codigoForm, status: codigoStatus };
 }
 
-// ===== MODAL: NOVO PROCESSO =====
+function existeCodigo(codigo) {
+    return processos.some(p => p.linkForm === codigo || p.linkStatus === codigo);
+}
+
+function getUrlBase() {
+    return window.location.origin + window.location.pathname;
+}
+
+function montarLinkForm(codigo) {
+    return getUrlBase() + '?form=' + codigo;
+}
+
+function montarLinkStatus(codigo) {
+    return getUrlBase() + '?status=' + codigo;
+}
+
+// ===== PERSISTÊNCIA =====
+function carregarProcessos() {
+    const salvos = localStorage.getItem('atos-societarios-processos');
+    if (salvos) processos = JSON.parse(salvos);
+}
+
+function salvarProcessos() {
+    localStorage.setItem('atos-societarios-processos', JSON.stringify(processos));
+}
+
+function salvarProcesso(processo) {
+    const idx = processos.findIndex(p => p.id === processo.id);
+    if (idx >= 0) processos[idx] = processo;
+    else processos.push(processo);
+    salvarProcessos();
+}
+
+function buscarPorLinkForm(codigo) {
+    return processos.find(p => p.linkForm === codigo);
+}
+
+function buscarPorLinkStatus(codigo) {
+    return processos.find(p => p.linkStatus === codigo);
+}
+
+// ===================================================================
+//  PAINEL DA CONTABILIDADE
+// ===================================================================
+
+function renderizarPainel() {
+    renderizarDashboard();
+    renderizarLista('abertura', 'lista-aberturas');
+    renderizarLista('alteracao', 'lista-alteracoes');
+    renderizarLista('encerramento', 'lista-encerramentos');
+    popularFiltroClientes();
+}
+
+function popularFiltroClientes() {
+    const select = document.getElementById('filtro-cliente');
+    const clientes = [...new Set(processos.map(p => p.clienteNome).filter(Boolean))];
+    select.innerHTML = '<option value="todos">Todos os Clientes</option>';
+    clientes.forEach(nome => {
+        select.innerHTML += `<option value="${nome}">${nome}</option>`;
+    });
+}
+
+// Modal: Novo Processo
 function abrirModalNovoProcesso(tipo) {
     document.getElementById('modal-novo-processo').style.display = 'flex';
-    sociosFormCount = 0;
-    document.getElementById('lista-socios-form').innerHTML = '';
-    arquivosUpload = { iptu: [], docs: [] };
-    document.getElementById('arquivos-iptu').innerHTML = '';
-    document.getElementById('arquivos-docs').innerHTML = '';
-
-    // Reset form
-    document.querySelectorAll('#modal-novo-processo input, #modal-novo-processo textarea, #modal-novo-processo select').forEach(el => {
-        if (el.type === 'file') return;
-        if (el.tagName === 'SELECT') el.selectedIndex = 0;
-        else el.value = '';
-    });
-
-    if (tipo) {
-        document.getElementById('processo-tipo').value = tipo;
-        atualizarFormularioProcesso();
-    }
-
-    // Adicionar primeiro sócio por padrão
-    adicionarSocioForm();
+    document.getElementById('processo-tipo').value = tipo || '';
+    document.getElementById('processo-cliente-nome').value = '';
+    document.getElementById('processo-subtipo').selectedIndex = 0;
+    atualizarFormularioProcesso();
 }
 
 function fecharModalNovoProcesso() {
@@ -163,221 +214,35 @@ function fecharModalNovoProcesso() {
 
 function atualizarFormularioProcesso() {
     const tipo = document.getElementById('processo-tipo').value;
-
-    // Mostrar/esconder subtipo de alteração
-    document.getElementById('campo-tipo-alteracao').style.display =
-        tipo === 'alteracao' ? 'block' : 'none';
-
-    // Mostrar/esconder seções conforme tipo
-    const secoesEmpresa = ['secao-empresa', 'secao-socios', 'secao-capital',
-        'secao-atividades', 'secao-cnpj', 'secao-regime', 'secao-emails', 'secao-valor', 'secao-documentos'];
-
-    if (tipo === 'encerramento') {
-        secoesEmpresa.forEach(id => {
-            const el = document.getElementById(id);
-            if (['secao-empresa', 'secao-socios', 'secao-documentos'].includes(id)) {
-                el.style.display = 'block';
-            } else {
-                el.style.display = 'none';
-            }
-        });
-    } else if (tipo === 'alteracao') {
-        secoesEmpresa.forEach(id => document.getElementById(id).style.display = 'block');
-        document.getElementById('secao-valor').style.display = 'none';
-    } else {
-        secoesEmpresa.forEach(id => document.getElementById(id).style.display = 'block');
-    }
+    document.getElementById('campo-tipo-alteracao').style.display = tipo === 'alteracao' ? 'block' : 'none';
 }
 
-// ===== SÓCIOS DINÂMICOS =====
-function adicionarSocioForm() {
-    sociosFormCount++;
-    const idx = sociosFormCount;
-    const container = document.getElementById('lista-socios-form');
-
-    const html = `
-        <div class="socio-entry" id="socio-entry-${idx}">
-            <div class="socio-entry-header">
-                <span class="socio-entry-title">Sócio ${idx}</span>
-                <button class="btn-remove-socio" onclick="removerSocioForm(${idx})" title="Remover sócio">×</button>
-            </div>
-            <div class="form-row">
-                <div class="form-field">
-                    <label>Nome Completo <span class="required">*</span></label>
-                    <input type="text" id="socio-nome-${idx}" placeholder="Nome completo do sócio">
-                </div>
-                <div class="form-field" style="flex:0 0 180px;">
-                    <label>% Participação</label>
-                    <input type="number" id="socio-percentual-${idx}" placeholder="0" min="0" max="100" step="0.01" oninput="recalcularParticipacoes()">
-                </div>
-            </div>
-            <div class="form-row" style="margin-top:10px;">
-                <div class="form-field">
-                    <label>Nacionalidade</label>
-                    <input type="text" id="socio-nacionalidade-${idx}" placeholder="Brasileira" value="Brasileira">
-                </div>
-                <div class="form-field">
-                    <label>Profissão</label>
-                    <input type="text" id="socio-profissao-${idx}" placeholder="Profissão">
-                </div>
-                <div class="form-field">
-                    <label>Estado Civil</label>
-                    <select id="socio-estado-civil-${idx}">
-                        <option value="">Selecione...</option>
-                        <option value="solteiro">Solteiro(a)</option>
-                        <option value="casado">Casado(a)</option>
-                        <option value="divorciado">Divorciado(a)</option>
-                        <option value="viuvo">Viúvo(a)</option>
-                        <option value="uniao-estavel">União Estável</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row" style="margin-top:10px;">
-                <div class="form-field">
-                    <label>Regime de Casamento</label>
-                    <select id="socio-regime-${idx}">
-                        <option value="">N/A</option>
-                        <option value="comunhao-parcial">Comunhão Parcial</option>
-                        <option value="comunhao-universal">Comunhão Universal</option>
-                        <option value="separacao-total">Separação Total</option>
-                        <option value="participacao-final">Participação Final nos Aquestos</option>
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label>Endereço Completo</label>
-                    <input type="text" id="socio-endereco-${idx}" placeholder="Endereço do sócio">
-                </div>
-            </div>
-            <div class="form-field" id="socio-valor-calc-${idx}" style="margin-top:8px;"></div>
-            <div class="socio-checkboxes">
-                <label>
-                    <input type="checkbox" id="socio-admin-${idx}"> Administrador
-                </label>
-                <label>
-                    <input type="radio" name="responsavel-rf" id="socio-rf-${idx}" value="${idx}"> Responsável na RF
-                </label>
-            </div>
-        </div>
-    `;
-
-    container.insertAdjacentHTML('beforeend', html);
-}
-
-function removerSocioForm(idx) {
-    const entry = document.getElementById('socio-entry-' + idx);
-    if (entry) entry.remove();
-    recalcularParticipacoes();
-}
-
-function recalcularParticipacoes() {
-    const capital = parseFloat(document.getElementById('processo-capital')?.value) || 0;
-
-    document.querySelectorAll('[id^="socio-percentual-"]').forEach(input => {
-        const idx = input.id.split('-').pop();
-        const pct = parseFloat(input.value) || 0;
-        const valorEl = document.getElementById('socio-valor-calc-' + idx);
-
-        if (valorEl && capital > 0 && pct > 0) {
-            const valor = (capital * pct / 100);
-            valorEl.innerHTML = `<div class="valor-calculado">Valor da participação: R$ ${valor.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>`;
-        } else if (valorEl) {
-            valorEl.innerHTML = '';
-        }
-    });
-}
-
-// ===== UPLOAD =====
-function handleUpload(input, containerId) {
-    const container = document.getElementById(containerId);
-    const files = Array.from(input.files);
-
-    files.forEach(file => {
-        const fileId = Date.now() + Math.random().toString(36).substr(2, 5);
-        const el = document.createElement('div');
-        el.className = 'uploaded-file';
-        el.id = 'file-' + fileId;
-        el.innerHTML = `
-            <span class="uploaded-file-name">📄 ${file.name}</span>
-            <button class="btn-remove-file" onclick="removerArquivo('${fileId}', '${containerId}')">×</button>
-        `;
-        container.appendChild(el);
-
-        // Armazenar referência
-        if (containerId === 'arquivos-iptu') {
-            arquivosUpload.iptu.push({ id: fileId, file: file });
-        } else {
-            arquivosUpload.docs.push({ id: fileId, file: file });
-        }
-    });
-
-    input.value = '';
-}
-
-function removerArquivo(fileId, containerId) {
-    const el = document.getElementById('file-' + fileId);
-    if (el) el.remove();
-
-    if (containerId === 'arquivos-iptu') {
-        arquivosUpload.iptu = arquivosUpload.iptu.filter(a => a.id !== fileId);
-    } else {
-        arquivosUpload.docs = arquivosUpload.docs.filter(a => a.id !== fileId);
-    }
-}
-
-// ===== SALVAR PROCESSO =====
-function salvarProcesso() {
+// Criar processo (contabilidade)
+function criarProcesso() {
     const tipo = document.getElementById('processo-tipo').value;
-    if (!tipo) {
-        showToast('Selecione o tipo de ato societário');
-        return;
-    }
+    if (!tipo) { showToast('Selecione o tipo de ato societário'); return; }
 
-    const razao1 = document.getElementById('processo-razao1').value.trim();
-    if (!razao1 && tipo !== 'encerramento') {
-        showToast('Preencha a razão social');
-        return;
-    }
+    const clienteNome = document.getElementById('processo-cliente-nome').value.trim();
+    if (!clienteNome) { showToast('Preencha o nome do cliente'); return; }
 
-    // Coletar sócios
-    const socios = [];
-    document.querySelectorAll('[id^="socio-entry-"]').forEach(entry => {
-        const idx = entry.id.split('-').pop();
-        const nome = document.getElementById('socio-nome-' + idx)?.value.trim();
-        if (nome) {
-            socios.push({
-                nome: nome,
-                percentual: parseFloat(document.getElementById('socio-' + idx)?.value) || 0,
-                nacionalidade: document.getElementById('socio-nacionalidade-' + idx)?.value || '',
-                profissao: document.getElementById('socio-profissao-' + idx)?.value || '',
-                estadoCivil: document.getElementById('socio-estado-civil-' + idx)?.value || '',
-                regimeCasamento: document.getElementById('socio-regime-' + idx)?.value || '',
-                endereco: document.getElementById('socio-endereco-' + idx)?.value || '',
-                administrador: document.getElementById('socio-admin-' + idx)?.checked || false,
-                responsavelRF: document.getElementById('socio-rf-' + idx)?.checked || false
-            });
-        }
-    });
+    const subtipo = document.getElementById('processo-subtipo')?.value || null;
+    const links = gerarLinks();
 
     const processo = {
         id: Date.now().toString(),
         tipo: tipo,
-        subtipo: document.getElementById('processo-subtipo')?.value || null,
-        razaoSocial: razao1,
-        razaoSocial2: document.getElementById('processo-razao2')?.value.trim() || '',
-        endereco: document.getElementById('processo-endereco')?.value.trim() || '',
-        socios: socios,
-        capitalSocial: parseFloat(document.getElementById('processo-capital')?.value) || 0,
-        atividadePrincipal: document.getElementById('processo-atividade-principal')?.value.trim() || '',
-        atividadeSecundaria: document.getElementById('processo-atividade-secundaria')?.value.trim() || '',
-        telefone: document.getElementById('processo-telefone')?.value.trim() || '',
-        emailCNPJ: document.getElementById('processo-email-cnpj')?.value.trim() || '',
-        porte: document.getElementById('processo-porte')?.value || '',
-        regimeTributario: document.getElementById('processo-regime')?.value || '',
+        subtipo: subtipo,
+        clienteNome: clienteNome,
+        linkForm: links.form,
+        linkStatus: links.status,
+        // Dados serão preenchidos pelo cliente
+        dados: {},
+        socios: [],
         etapas: {},
         status: 'pendente',
-        criadoPor: usuarioAtual?.cpf || '',
         criadoEm: new Date().toISOString(),
-        atualizadoEm: new Date().toISOString()
+        atualizadoEm: new Date().toISOString(),
+        preenchidoEm: null
     };
 
     // Inicializar etapas
@@ -389,29 +254,565 @@ function salvarProcesso() {
         processo.etapas[etapasConfig[0].id].status = 'em-andamento';
     }
 
-    // Salvar localmente (TODO: Firebase)
-    processos.push(processo);
-    localStorage.setItem('atos-societarios-processos', JSON.stringify(processos));
-
+    salvarProcesso(processo);
     fecharModalNovoProcesso();
-    renderizarProcessos();
-    showToast('Processo salvo com sucesso! 🎉');
+
+    // Mostrar modal com links gerados
+    document.getElementById('link-gerado-form').value = montarLinkForm(links.form);
+    document.getElementById('link-gerado-status').value = montarLinkStatus(links.status);
+    document.getElementById('modal-links-gerados').style.display = 'flex';
+
+    // Guardar pra enviar WhatsApp
+    window._linksParaEnviar = { form: montarLinkForm(links.form), status: montarLinkStatus(links.status), cliente: clienteNome };
+
+    renderizarPainel();
+    showToast('Processo criado! Envie os links ao cliente.');
 }
 
-// ===== RENDERIZAÇÃO =====
-function renderizarProcessos() {
-    // Carregar do localStorage se vazio
-    if (processos.length === 0) {
-        const salvos = localStorage.getItem('atos-societarios-processos');
-        if (salvos) processos = JSON.parse(salvos);
+function fecharModalLinksGerados() {
+    document.getElementById('modal-links-gerados').style.display = 'none';
+}
+
+// Detalhe do processo (contabilidade)
+function abrirDetalheProcesso(id) {
+    const processo = processos.find(p => p.id === id);
+    if (!processo) return;
+
+    window._processoDetalhe = processo;
+
+    document.getElementById('modal-detalhe-processo').style.display = 'flex';
+    document.getElementById('detalhe-titulo').textContent = processo.clienteNome || processo.dados?.razaoSocial || 'Processo';
+    document.getElementById('detalhe-subtitle').textContent =
+        TIPOS_LABEL[processo.tipo] + (processo.subtipo ? ' — ' + SUBTIPOS_LABEL[processo.subtipo] : '');
+
+    // Links
+    document.getElementById('detalhe-link-form').value = montarLinkForm(processo.linkForm);
+    document.getElementById('detalhe-link-status').value = montarLinkStatus(processo.linkStatus);
+
+    // Pipeline
+    renderizarPipeline(processo, 'detalhe-pipeline', true);
+
+    // Botões de etapa
+    const botoes = document.getElementById('detalhe-etapas-botoes');
+    const etapasConfig = ETAPAS_POR_TIPO[processo.tipo] || [];
+    botoes.innerHTML = etapasConfig.map(etapa => {
+        const estado = processo.etapas?.[etapa.id]?.status || 'pendente';
+        const proximo = estado === 'pendente' ? 'em-andamento' : estado === 'em-andamento' ? 'concluido' : null;
+        if (!proximo) return '';
+        const label = proximo === 'em-andamento' ? `▶ Iniciar: ${etapa.label}` : `✓ Concluir: ${etapa.label}`;
+        const cls = proximo === 'concluido' ? 'btn-success' : 'btn-primary';
+        return `<button class="btn btn-small ${cls}" onclick="avancarEtapa('${processo.id}','${etapa.id}','${proximo}')">${label}</button>`;
+    }).join('');
+
+    // Info
+    renderizarInfoProcesso(processo, 'detalhe-info');
+}
+
+function fecharModalDetalhe() {
+    document.getElementById('modal-detalhe-processo').style.display = 'none';
+}
+
+function avancarEtapa(processoId, etapaId, novoStatus) {
+    const processo = processos.find(p => p.id === processoId);
+    if (!processo) return;
+
+    processo.etapas[etapaId].status = novoStatus;
+    processo.etapas[etapaId].data = new Date().toISOString();
+    processo.atualizadoEm = new Date().toISOString();
+
+    // Verificar se concluiu
+    const etapasConfig = ETAPAS_POR_TIPO[processo.tipo] || [];
+    const todasConcluidas = etapasConfig.every(e => processo.etapas[e.id]?.status === 'concluido');
+    processo.status = todasConcluidas ? 'concluido' : 'em-andamento';
+
+    // Se avançou uma etapa, marcar próxima como em-andamento
+    if (novoStatus === 'concluido') {
+        const idx = etapasConfig.findIndex(e => e.id === etapaId);
+        if (idx >= 0 && idx < etapasConfig.length - 1) {
+            const proxima = etapasConfig[idx + 1];
+            if (processo.etapas[proxima.id]?.status === 'pendente' && proxima.id !== 'exigencia') {
+                // Não avança automaticamente pra exigência
+            }
+        }
     }
 
-    renderizarDashboard();
-    renderizarLista('abertura', 'lista-aberturas');
-    renderizarLista('alteracao', 'lista-alteracoes');
-    renderizarLista('encerramento', 'lista-encerramentos');
+    salvarProcesso(processo);
+    abrirDetalheProcesso(processoId); // re-render
+    renderizarPainel();
+    showToast('Etapa atualizada!');
 }
 
+// ===================================================================
+//  FORMULÁRIO DO CLIENTE (acesso via ?form=CODIGO)
+// ===================================================================
+
+function carregarFormulario(codigo) {
+    const processo = buscarPorLinkForm(codigo);
+    if (!processo) {
+        mostrarView('view-invalido');
+        return;
+    }
+
+    processoAtual = processo;
+    const tipo = processo.tipo;
+
+    document.getElementById('form-tipo-badge').textContent = TIPOS_LABEL[tipo];
+    document.getElementById('form-tipo-badge').className = 'role-badge ' + tipo;
+
+    const titulos = {
+        abertura: '📝 Formulário de Abertura de Empresa',
+        alteracao: '📝 Formulário de Alteração do Contrato Social',
+        encerramento: '📝 Formulário de Encerramento de Empresa'
+    };
+    document.getElementById('form-titulo').textContent = titulos[tipo] || 'Preencha os dados';
+
+    const container = document.getElementById('form-cliente-container');
+    container.innerHTML = montarFormularioHTML(processo);
+
+    // Se já tem dados, preencher
+    if (processo.preenchidoEm) {
+        preencherFormulario(processo);
+        document.getElementById('form-links-salvos').style.display = 'block';
+        document.getElementById('link-form').value = montarLinkForm(processo.linkForm);
+        document.getElementById('link-status').value = montarLinkStatus(processo.linkStatus);
+    }
+
+    // Sócio inicial
+    if (tipo !== 'encerramento' && (!processo.socios || processo.socios.length === 0)) {
+        adicionarSocioForm();
+    } else if (processo.socios && processo.socios.length > 0) {
+        processo.socios.forEach((s, i) => adicionarSocioForm(s));
+    }
+}
+
+function montarFormularioHTML(processo) {
+    const tipo = processo.tipo;
+    let html = '';
+
+    // Botão salvar
+    html += `<div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
+        <button class="btn btn-primary" onclick="salvarFormularioCliente()">💾 Salvar Dados</button>
+    </div>`;
+
+    // Dados da Empresa
+    if (tipo !== 'encerramento') {
+        html += `
+        <div class="modal-section">
+            <h3>🏢 Dados da Empresa</h3>
+            <div class="form-row">
+                <div class="form-field">
+                    <label>Razão Social (opção 1) <span class="required">*</span></label>
+                    <input type="text" id="fc-razao1" placeholder="Nome da empresa">
+                </div>
+                <div class="form-field">
+                    <label>Razão Social (opção 2) <span class="optional">(alternativa)</span></label>
+                    <input type="text" id="fc-razao2" placeholder="Nome alternativo">
+                </div>
+            </div>
+            <div class="form-field" style="margin-top:12px;">
+                <label>Endereço da Sede <span class="required">*</span></label>
+                <textarea id="fc-endereco" placeholder="Endereço completo da sede"></textarea>
+            </div>
+            <div class="form-field" style="margin-top:12px;">
+                <label>IPTU</label>
+                <div class="upload-area" onclick="document.getElementById('fc-upload-iptu').click()">
+                    <input type="file" id="fc-upload-iptu" accept="image/*,.pdf" onchange="handleUpload(this, 'fc-arquivos-iptu')">
+                    <span class="upload-icon">📎</span>
+                    <span class="upload-text">Clique para enviar o comprovante de IPTU</span>
+                    <span class="upload-hint">PDF ou imagem (JPG, PNG)</span>
+                </div>
+                <div class="uploaded-files" id="fc-arquivos-iptu"></div>
+            </div>
+        </div>`;
+    }
+
+    // Documentos (sempre para encerramento)
+    if (tipo === 'encerramento' || tipo === 'abertura') {
+        html += `
+        <div class="modal-section">
+            <h3>📎 Documentos Pessoais dos Sócios</h3>
+            <p style="font-size:0.82rem;color:var(--text-light);margin-bottom:12px;">RG, CPF e outros documentos</p>
+            <div class="upload-area" onclick="document.getElementById('fc-upload-docs').click()">
+                <input type="file" id="fc-upload-docs" accept="image/*,.pdf" multiple onchange="handleUpload(this, 'fc-arquivos-docs')">
+                <span class="upload-icon">📎</span>
+                <span class="upload-text">Clique para enviar documentos</span>
+                <span class="upload-hint">PDF ou imagem — pode selecionar vários</span>
+            </div>
+            <div class="uploaded-files" id="fc-arquivos-docs"></div>
+        </div>`;
+    }
+
+    // Sócios
+    if (tipo !== 'encerramento') {
+        html += `
+        <div class="modal-section">
+            <h3>👥 Sócios</h3>
+            <div id="fc-lista-socios"></div>
+            <button class="btn btn-outline" onclick="adicionarSocioForm()" style="margin-top:8px;">+ Adicionar Sócio</button>
+        </div>`;
+    }
+
+    // Capital Social
+    if (tipo === 'abertura') {
+        html += `
+        <div class="modal-section">
+            <h3>💰 Capital Social</h3>
+            <div class="form-row">
+                <div class="form-field">
+                    <label>Capital Social Total (R$) <span class="required">*</span></label>
+                    <input type="number" id="fc-capital" placeholder="0,00" step="0.01" min="0" oninput="recalcularParticipacoes()">
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <h3>🏭 Atividades da Empresa</h3>
+            <div class="form-field">
+                <label>Atividade Principal <span class="required">*</span></label>
+                <input type="text" id="fc-atividade-principal" placeholder="CNAE ou descrição">
+            </div>
+            <div class="form-field" style="margin-top:12px;">
+                <label>Atividade Secundária</label>
+                <input type="text" id="fc-atividade-secundaria" placeholder="CNAE ou descrição">
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <h3>📇 Dados para Cartão CNPJ</h3>
+            <div class="aviso-publico">
+                ⚠️ Essas informações ficam disponíveis para consulta pública. Recomendamos criar um e-mail específico.
+            </div>
+            <div class="form-row" style="margin-top:12px;">
+                <div class="form-field">
+                    <label>Telefone</label>
+                    <input type="text" id="fc-telefone" placeholder="(00) 00000-0000">
+                </div>
+                <div class="form-field">
+                    <label>E-mail</label>
+                    <input type="email" id="fc-email-cnpj" placeholder="email@empresa.com.br">
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <h3>📊 Porte e Regime Tributário</h3>
+            <div class="form-row">
+                <div class="form-field">
+                    <label>Porte da Empresa <span class="required">*</span></label>
+                    <select id="fc-porte">
+                        <option value="">Selecione...</option>
+                        <option value="ME">ME — R$ 80.000,01 a R$ 360.000,00</option>
+                        <option value="EPP">EPP — R$ 360.000,01 a R$ 4.800.000,00</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Regime Tributário <span class="required">*</span></label>
+                    <select id="fc-regime">
+                        <option value="">Selecione...</option>
+                        <option value="simples">Simples Nacional</option>
+                        <option value="presumido">Lucro Presumido</option>
+                        <option value="real">Lucro Real</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="valor-calculado" style="font-size:1.1rem;text-align:center;padding:16px;margin-top:16px;">
+            💰 Valor da Abertura: <strong>R$ 1.000,00</strong>
+            <br><span style="font-size:0.78rem;font-weight:400;opacity:0.8;">Inclui: elaboração do contrato, registros e taxas</span>
+        </div>`;
+    }
+
+    // Info pós-abertura
+    if (tipo === 'abertura') {
+        html += `
+        <div class="modal-section" style="margin-top:20px;">
+            <h3>📌 Após a Abertura</h3>
+            <div class="aviso-publico" style="background:#d1ecf1;border-color:#0c5460;color:#0c5460;">
+                Após a conclusão, você precisará:<br>
+                • Acessar o <strong>Portal da JUCESP</strong> com sua senha Gov.br<br>
+                • Assinar os documentos online<br>
+                • Adquirir <strong>Certificado Digital A1</strong> (obrigatório)
+            </div>
+        </div>`;
+    }
+
+    // Botão salvar embaixo também
+    html += `<div style="display:flex;justify-content:flex-end;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn btn-primary" onclick="salvarFormularioCliente()">💾 Salvar Dados</button>
+    </div>`;
+
+    return html;
+}
+
+// ===== SÓCIOS DINÂMICOS (FORMULÁRIO DO CLIENTE) =====
+function adicionarSocioForm(dadosExistentes) {
+    sociosFormCount++;
+    const idx = sociosFormCount;
+    const container = document.getElementById('fc-lista-socios');
+    if (!container) return;
+
+    const s = dadosExistentes || {};
+
+    const html = `
+        <div class="socio-entry" id="socio-entry-${idx}">
+            <div class="socio-entry-header">
+                <span class="socio-entry-title">Sócio ${idx}</span>
+                <button class="btn-remove-socio" onclick="removerSocioForm(${idx})" title="Remover">×</button>
+            </div>
+            <div class="form-row">
+                <div class="form-field">
+                    <label>Nome Completo <span class="required">*</span></label>
+                    <input type="text" id="socio-nome-${idx}" placeholder="Nome completo" value="${s.nome || ''}">
+                </div>
+                <div class="form-field" style="flex:0 0 180px;">
+                    <label>% Participação</label>
+                    <input type="number" id="socio-percentual-${idx}" placeholder="0" min="0" max="100" step="0.01" value="${s.percentual || ''}" oninput="recalcularParticipacoes()">
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:10px;">
+                <div class="form-field">
+                    <label>Nacionalidade</label>
+                    <input type="text" id="socio-nacionalidade-${idx}" value="${s.nacionalidade || 'Brasileira'}">
+                </div>
+                <div class="form-field">
+                    <label>Profissão</label>
+                    <input type="text" id="socio-profissao-${idx}" value="${s.profissao || ''}">
+                </div>
+                <div class="form-field">
+                    <label>Estado Civil</label>
+                    <select id="socio-estado-civil-${idx}">
+                        <option value="">Selecione...</option>
+                        ${Object.entries(ESTADOS_CIVIS).map(([v, l]) => `<option value="${v}" ${s.estadoCivil === v ? 'selected' : ''}>${l}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:10px;">
+                <div class="form-field">
+                    <label>Regime de Casamento</label>
+                    <select id="socio-regime-${idx}">
+                        <option value="">N/A</option>
+                        ${Object.entries(REGIMES_CASAMENTO).map(([v, l]) => `<option value="${v}" ${s.regimeCasamento === v ? 'selected' : ''}>${l}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Endereço Completo</label>
+                    <input type="text" id="socio-endereco-${idx}" value="${s.endereco || ''}">
+                </div>
+            </div>
+            <div class="form-field" id="socio-valor-calc-${idx}" style="margin-top:8px;"></div>
+            <div class="socio-checkboxes">
+                <label><input type="checkbox" id="socio-admin-${idx}" ${s.administrador ? 'checked' : ''}> Administrador</label>
+                <label><input type="radio" name="responsavel-rf" id="socio-rf-${idx}" value="${idx}" ${s.responsavelRF ? 'checked' : ''}> Responsável na RF</label>
+            </div>
+        </div>`;
+
+    container.insertAdjacentHTML('beforeend', html);
+}
+
+function removerSocioForm(idx) {
+    const entry = document.getElementById('socio-entry-' + idx);
+    if (entry) entry.remove();
+    recalcularParticipacoes();
+}
+
+function recalcularParticipacoes() {
+    const capital = parseFloat(document.getElementById('fc-capital')?.value) || 0;
+    document.querySelectorAll('[id^="socio-percentual-"]').forEach(input => {
+        const idx = input.id.split('-').pop();
+        const pct = parseFloat(input.value) || 0;
+        const valorEl = document.getElementById('socio-valor-calc-' + idx);
+        if (valorEl && capital > 0 && pct > 0) {
+            const valor = capital * pct / 100;
+            valorEl.innerHTML = `<div class="valor-calculado">Valor da participação: R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>`;
+        } else if (valorEl) {
+            valorEl.innerHTML = '';
+        }
+    });
+}
+
+// ===== UPLOAD =====
+function handleUpload(input, containerId) {
+    const container = document.getElementById(containerId);
+    const files = Array.from(input.files);
+    files.forEach(file => {
+        const fileId = Date.now() + Math.random().toString(36).substr(2, 5);
+        const el = document.createElement('div');
+        el.className = 'uploaded-file';
+        el.id = 'file-' + fileId;
+        el.innerHTML = `<span class="uploaded-file-name">📄 ${file.name}</span><button class="btn-remove-file" onclick="this.parentElement.remove()">×</button>`;
+        container.appendChild(el);
+    });
+    input.value = '';
+}
+
+function handleUploadCliente(input) {
+    handleUpload(input, 'status-arquivos-docs');
+}
+
+// ===== SALVAR FORMULÁRIO DO CLIENTE =====
+function salvarFormularioCliente() {
+    if (!processoAtual) return;
+
+    // Coletar dados
+    const razao1 = document.getElementById('fc-razao1')?.value.trim();
+    if (!razao1 && processoAtual.tipo !== 'encerramento') {
+        showToast('Preencha a razão social');
+        return;
+    }
+
+    // Coletar sócios
+    const socios = [];
+    document.querySelectorAll('[id^="socio-entry-"]').forEach(entry => {
+        const idx = entry.id.split('-').pop();
+        const nome = document.getElementById('socio-nome-' + idx)?.value.trim();
+        if (nome) {
+            socios.push({
+                nome,
+                percentual: parseFloat(document.getElementById('socio-percentual-' + idx)?.value) || 0,
+                nacionalidade: document.getElementById('socio-nacionalidade-' + idx)?.value || '',
+                profissao: document.getElementById('socio-profissao-' + idx)?.value || '',
+                estadoCivil: document.getElementById('socio-estado-civil-' + idx)?.value || '',
+                regimeCasamento: document.getElementById('socio-regime-' + idx)?.value || '',
+                endereco: document.getElementById('socio-endereco-' + idx)?.value || '',
+                administrador: document.getElementById('socio-admin-' + idx)?.checked || false,
+                responsavelRF: document.getElementById('socio-rf-' + idx)?.checked || false
+            });
+        }
+    });
+
+    processoAtual.dados = {
+        razaoSocial: razao1 || '',
+        razaoSocial2: document.getElementById('fc-razao2')?.value.trim() || '',
+        endereco: document.getElementById('fc-endereco')?.value.trim() || '',
+        capitalSocial: parseFloat(document.getElementById('fc-capital')?.value) || 0,
+        atividadePrincipal: document.getElementById('fc-atividade-principal')?.value.trim() || '',
+        atividadeSecundaria: document.getElementById('fc-atividade-secundaria')?.value.trim() || '',
+        telefone: document.getElementById('fc-telefone')?.value.trim() || '',
+        emailCNPJ: document.getElementById('fc-email-cnpj')?.value.trim() || '',
+        porte: document.getElementById('fc-porte')?.value || '',
+        regimeTributario: document.getElementById('fc-regime')?.value || ''
+    };
+    processoAtual.socios = socios;
+    processoAtual.preenchidoEm = new Date().toISOString();
+    processoAtual.atualizadoEm = new Date().toISOString();
+
+    // Avançar etapa de solicitação se ainda pendente
+    if (processoAtual.etapas?.solicitacao?.status === 'em-andamento') {
+        processoAtual.etapas.solicitacao.status = 'concluido';
+        processoAtual.etapas.solicitacao.data = new Date().toISOString();
+        // Próxima etapa fica pra contabilidade gerenciar
+    }
+
+    salvarProcesso(processoAtual);
+
+    // Mostrar links
+    document.getElementById('form-links-salvos').style.display = 'block';
+    document.getElementById('link-form').value = montarLinkForm(processoAtual.linkForm);
+    document.getElementById('link-status').value = montarLinkStatus(processoAtual.linkStatus);
+
+    showToast('Dados salvos com sucesso! 🎉');
+}
+
+function preencherFormulario(processo) {
+    const d = processo.dados || {};
+    setTimeout(() => {
+        if (document.getElementById('fc-razao1')) document.getElementById('fc-razao1').value = d.razaoSocial || '';
+        if (document.getElementById('fc-razao2')) document.getElementById('fc-razao2').value = d.razaoSocial2 || '';
+        if (document.getElementById('fc-endereco')) document.getElementById('fc-endereco').value = d.endereco || '';
+        if (document.getElementById('fc-capital')) document.getElementById('fc-capital').value = d.capitalSocial || '';
+        if (document.getElementById('fc-atividade-principal')) document.getElementById('fc-atividade-principal').value = d.atividadePrincipal || '';
+        if (document.getElementById('fc-atividade-secundaria')) document.getElementById('fc-atividade-secundaria').value = d.atividadeSecundaria || '';
+        if (document.getElementById('fc-telefone')) document.getElementById('fc-telefone').value = d.telefone || '';
+        if (document.getElementById('fc-email-cnpj')) document.getElementById('fc-email-cnpj').value = d.emailCNPJ || '';
+        if (document.getElementById('fc-porte')) document.getElementById('fc-porte').value = d.porte || '';
+        if (document.getElementById('fc-regime')) document.getElementById('fc-regime').value = d.regimeTributario || '';
+    }, 100);
+}
+
+// ===================================================================
+//  STATUS DO CLIENTE (acesso via ?status=CODIGO)
+// ===================================================================
+
+function carregarStatus(codigo) {
+    const processo = buscarPorLinkStatus(codigo);
+    if (!processo) {
+        mostrarView('view-invalido');
+        return;
+    }
+
+    const d = processo.dados || {};
+    document.getElementById('status-titulo').textContent = `📋 ${d.razaoSocial || processo.clienteNome || 'Seu Processo'}`;
+    document.getElementById('status-descricao').textContent = TIPOS_LABEL[processo.tipo] +
+        (processo.subtipo ? ' — ' + SUBTIPOS_LABEL[processo.subtipo] : '');
+
+    // Pipeline
+    renderizarPipeline(processo, 'status-pipeline', false);
+
+    // Info
+    renderizarInfoProcesso(processo, 'status-info');
+
+    // Upload de docs (se não concluído)
+    if (processo.status !== 'concluido') {
+        document.getElementById('status-secao-upload').style.display = 'block';
+    }
+}
+
+// ===================================================================
+//  COMPONENTES COMPARTILHADOS
+// ===================================================================
+
+function renderizarPipeline(processo, containerId, editavel) {
+    const etapasConfig = ETAPAS_POR_TIPO[processo.tipo] || [];
+    const container = document.getElementById(containerId);
+
+    container.innerHTML = etapasConfig.map((etapa, i) => {
+        const estado = processo.etapas?.[etapa.id]?.status || 'pendente';
+        const isLast = i === etapasConfig.length - 1;
+        return `
+            <div class="etapa">
+                <div class="etapa-circle ${estado}">${estado === 'concluido' ? '✓' : (i + 1)}</div>
+                <span class="etapa-label">${etapa.label}</span>
+            </div>
+            ${!isLast ? `<div class="etapa-connector ${estado === 'concluido' ? 'concluido' : ''}"></div>` : ''}
+        `;
+    }).join('');
+}
+
+function renderizarInfoProcesso(processo, containerId) {
+    const container = document.getElementById(containerId);
+    const d = processo.dados || {};
+
+    let html = '';
+
+    if (d.razaoSocial) {
+        html += `<div class="form-row" style="gap:20px;">
+            <div class="form-field"><label>Razão Social</label><p style="padding:8px 0;font-weight:600;">${d.razaoSocial}</p></div>
+            ${d.razaoSocial2 ? `<div class="form-field"><label>Razão Social (opção 2)</label><p style="padding:8px 0;">${d.razaoSocial2}</p></div>` : ''}
+        </div>`;
+    }
+
+    if (d.endereco) html += `<div class="form-field" style="margin-top:12px;"><label>Endereço</label><p style="padding:8px 0;">${d.endereco}</p></div>`;
+
+    if (processo.socios?.length) {
+        html += `<div style="margin-top:16px;">
+            <label style="font-size:0.75rem;font-weight:700;color:var(--text-mid);text-transform:uppercase;letter-spacing:.4px;">Sócios (${processo.socios.length})</label>
+            ${processo.socios.map(s => `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                <strong>${s.nome}</strong>${s.percentual ? ` — ${s.percentual}%` : ''}
+                ${s.administrador ? ' <span style="color:var(--gold);font-weight:700;">Admin</span>' : ''}
+                ${s.responsavelRF ? ' <span style="color:var(--accent);font-size:0.78rem;">Responsável RF</span>' : ''}
+            </div>`).join('')}
+        </div>`;
+    }
+
+    if (d.capitalSocial) html += `<div class="form-field" style="margin-top:12px;"><label>Capital Social</label><p style="padding:8px 0;font-weight:600;">R$ ${d.capitalSocial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>`;
+
+    if (!html) html = '<p style="color:var(--text-light);">Aguardando preenchimento do cliente...</p>';
+
+    container.innerHTML = html;
+}
+
+// ===== RENDERIZAÇÃO DO PAINEL =====
 function renderizarDashboard() {
     const aberturas = processos.filter(p => p.tipo === 'abertura').length;
     const alteracoes = processos.filter(p => p.tipo === 'alteracao').length;
@@ -425,12 +826,7 @@ function renderizarDashboard() {
 
     const recentes = document.getElementById('processos-recentes');
     if (processos.length === 0) {
-        recentes.innerHTML = `
-            <div class="empty-state">
-                <span class="empty-icon">📋</span>
-                <p>Nenhum processo cadastrado</p>
-                <p class="empty-hint">Clique em "Novo Processo" para começar</p>
-            </div>`;
+        recentes.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>Nenhum processo cadastrado</p><p class="empty-hint">Clique em "Novo Processo" para começar</p></div>`;
         return;
     }
 
@@ -445,11 +841,7 @@ function renderizarLista(tipo, containerId) {
     if (lista.length === 0) {
         const icons = { abertura: '🏢', alteracao: '✏️', encerramento: '❌' };
         const labels = { abertura: 'abertura', alteracao: 'alteração', encerramento: 'encerramento' };
-        container.innerHTML = `
-            <div class="empty-state">
-                <span class="empty-icon">${icons[tipo]}</span>
-                <p>Nenhum ${labels[tipo]} cadastrado</p>
-            </div>`;
+        container.innerHTML = `<div class="empty-state"><span class="empty-icon">${icons[tipo]}</span><p>Nenhum ${labels[tipo]} cadastrado</p></div>`;
         return;
     }
 
@@ -457,13 +849,8 @@ function renderizarLista(tipo, containerId) {
 }
 
 function criarCardProcesso(processo) {
-    const statusLabel = {
-        'pendente': 'Pendente',
-        'em-andamento': 'Em Andamento',
-        'concluido': 'Concluído'
-    };
+    const statusLabel = { 'pendente': 'Pendente', 'em-andamento': 'Em Andamento', 'concluido': 'Concluído' };
 
-    // Calcular etapa atual
     const etapasConfig = ETAPAS_POR_TIPO[processo.tipo] || [];
     let etapaAtual = 'Início';
     for (const etapa of etapasConfig) {
@@ -473,21 +860,21 @@ function criarCardProcesso(processo) {
     }
 
     const statusGeral = calcularStatusGeral(processo);
+    const nome = processo.dados?.razaoSocial || processo.clienteNome || 'Sem nome';
+    const preenchido = processo.preenchidoEm ? '' : ' <span style="color:var(--warning);font-size:0.72rem;">⏳ Aguardando preenchimento</span>';
 
     return `
         <div class="processo-card" onclick="abrirDetalheProcesso('${processo.id}')">
             <div class="processo-header">
                 <span class="processo-tipo ${processo.tipo}">${TIPOS_LABEL[processo.tipo]}</span>
-                <span class="processo-status ${statusGeral}">${statusLabel[statusGeral] || statusGeral}</span>
+                <span class="processo-status ${statusGeral}">${statusLabel[statusGeral]}</span>
             </div>
-            <div class="processo-empresa">${processo.razaoSocial || 'Sem razão social'}</div>
+            <div class="processo-empresa">${nome}${preenchido}</div>
             <div class="processo-meta">
                 ${processo.subtipo ? SUBTIPOS_LABEL[processo.subtipo] + ' · ' : ''}
-                Etapa: ${etapaAtual} ·
-                ${new Date(processo.criadoEm).toLocaleDateString('pt-BR')}
+                Etapa: ${etapaAtual} · ${new Date(processo.criadoEm).toLocaleDateString('pt-BR')}
             </div>
-        </div>
-    `;
+        </div>`;
 }
 
 function calcularStatusGeral(processo) {
@@ -497,98 +884,28 @@ function calcularStatusGeral(processo) {
     return 'pendente';
 }
 
-// ===== DETALHE DO PROCESSO =====
-function abrirDetalheProcesso(id) {
-    const processo = processos.find(p => p.id === id);
-    if (!processo) return;
-
-    document.getElementById('modal-detalhe-processo').style.display = 'flex';
-    document.getElementById('detalhe-titulo').textContent = processo.razaoSocial || 'Processo';
-    document.getElementById('detalhe-subtitle').textContent =
-        TIPOS_LABEL[processo.tipo] + (processo.subtipo ? ' — ' + SUBTIPOS_LABEL[processo.subtipo] : '');
-
-    // Renderizar pipeline
-    const etapasConfig = ETAPAS_POR_TIPO[processo.tipo] || [];
-    const pipeline = document.getElementById('detalhe-pipeline');
-    pipeline.innerHTML = etapasConfig.map((etapa, i) => {
-        const estado = processo.etapas?.[etapa.id]?.status || 'pendente';
-        const isLast = i === etapasConfig.length - 1;
-
-        return `
-            <div class="etapa">
-                <div class="etapa-circle ${estado}">
-                    ${estado === 'concluido' ? '✓' : (i + 1)}
-                </div>
-                <span class="etapa-label">${etapa.label}</span>
-            </div>
-            ${!isLast ? `<div class="etapa-connector ${estado === 'concluido' ? 'concluido' : ''}"></div>` : ''}
-        `;
-    }).join('');
-
-    // Info do processo
-    const info = document.getElementById('detalhe-info');
-    info.innerHTML = `
-        <div class="form-row" style="gap:20px;">
-            <div class="form-field">
-                <label>Razão Social</label>
-                <p style="padding:8px 0;font-weight:600;">${processo.razaoSocial || '-'}</p>
-            </div>
-            ${processo.razaoSocial2 ? `
-            <div class="form-field">
-                <label>Razão Social (opção 2)</label>
-                <p style="padding:8px 0;">${processo.razaoSocial2}</p>
-            </div>` : ''}
-        </div>
-        ${processo.endereco ? `
-        <div class="form-field" style="margin-top:12px;">
-            <label>Endereço</label>
-            <p style="padding:8px 0;">${processo.endereco}</p>
-        </div>` : ''}
-        ${processo.socios?.length ? `
-        <div style="margin-top:16px;">
-            <label style="font-size:0.75rem;font-weight:700;color:var(--text-mid);text-transform:uppercase;letter-spacing:.4px;">Sócios (${processo.socios.length})</label>
-            ${processo.socios.map(s => `
-                <div style="padding:8px 0;border-bottom:1px solid var(--border);">
-                    <strong>${s.nome}</strong>
-                    ${s.percentual ? ` — ${s.percentual}%` : ''}
-                    ${s.administrador ? ' <span style="color:var(--gold);font-weight:700;">Admin</span>' : ''}
-                    ${s.responsavelRF ? ' <span style="color:var(--accent);font-size:0.78rem;">Responsável RF</span>' : ''}
-                </div>
-            `).join('')}
-        </div>` : ''}
-        ${processo.capitalSocial ? `
-        <div class="form-field" style="margin-top:12px;">
-            <label>Capital Social</label>
-            <p style="padding:8px 0;font-weight:600;">R$ ${processo.capitalSocial.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-        </div>` : ''}
-    `;
+// ===== UTILITÁRIOS =====
+function copiarLink(inputId) {
+    const input = document.getElementById(inputId);
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => showToast('Link copiado! 📋'));
 }
 
-function fecharModalDetalhe() {
-    document.getElementById('modal-detalhe-processo').style.display = 'none';
+function enviarLinksWhatsApp() {
+    const links = window._linksParaEnviar || window._linksParaEnviarDetalhe;
+    if (!links) return;
+
+    const msg = `Olá! Seu processo de ${links.tipo || 'ato societário'} foi criado.\n\n` +
+        `📝 *Preencher dados:* ${links.form}\n` +
+        `📊 *Acompanhar status:* ${links.status}`;
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-// ===== ADMINISTRAÇÃO =====
-function abrirPainelAdmin() {
-    document.getElementById('modal-admin').style.display = 'flex';
-}
-
-function fecharPainelAdmin() {
-    document.getElementById('modal-admin').style.display = 'none';
-}
-
-function criarNovoUsuario() {
-    // TODO: Integrar com Firebase
-    showToast('Funcionalidade será integrada com Firebase');
-}
-
-// ===== FILTROS =====
 function aplicarFiltro() {
-    // TODO: Implementar filtros
-    renderizarProcessos();
+    renderizarPainel();
 }
 
-// ===== TOAST =====
 function showToast(msg) {
     const existing = document.querySelector('.success-message');
     if (existing) existing.remove();
@@ -597,9 +914,5 @@ function showToast(msg) {
     el.className = 'success-message';
     el.textContent = msg;
     document.body.appendChild(el);
-
     setTimeout(() => el.remove(), 3000);
 }
-
-// ===== CARREGAR PROCESSOS AO INICIAR =====
-renderizarProcessos();

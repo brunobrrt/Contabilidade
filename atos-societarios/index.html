@@ -3,47 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Atos Societários</title>
+    <title>Atos Societários</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <!-- ===== LOADING FIREBASE ===== -->
-    <div id="firebase-loading" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,10,20,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
+    <!-- ===== LOADING ===== -->
+    <div id="loading-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,10,20,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
         <div style="font-size:3rem;margin-bottom:1rem;">📋</div>
-        <div style="color:white;font-size:1.2rem;font-weight:600;margin-bottom:1.5rem;">Conectando ao sistema...</div>
+        <div style="color:white;font-size:1.2rem;font-weight:600;margin-bottom:1.5rem;">Carregando...</div>
         <div style="width:44px;height:44px;border:4px solid rgba(255,255,255,0.2);border-top-color:#b8860b;border-radius:50%;animation:fb-spin 0.7s linear infinite;"></div>
         <style>@keyframes fb-spin{to{transform:rotate(360deg)}}</style>
     </div>
 
-    <!-- ===== TELA DE LOGIN ===== -->
-    <div id="login-screen" class="auth-screen">
-        <div class="auth-container">
-            <div class="auth-header">
-                <span class="auth-logo">📋</span>
-                <h1>Atos Societários</h1>
-                <p>Sistema de Gestão Empresarial</p>
-            </div>
-            <div class="auth-form">
-                <h2>Acesso ao Sistema</h2>
-                <div class="input-group">
-                    <label>CPF</label>
-                    <input type="text" id="login-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11"
-                        inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onkeypress="if(event.key==='Enter') fazerLogin()">
-                </div>
-                <div class="input-group">
-                    <label>Senha</label>
-                    <input type="password" id="login-senha" placeholder="Senha de acesso"
-                        onkeypress="if(event.key==='Enter') fazerLogin()">
-                </div>
-                <button class="btn btn-primary" onclick="fazerLogin()">Entrar</button>
-                <p class="auth-info">Acesso restrito. Contate o escritório para criar uma conta.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== SISTEMA PRINCIPAL ===== -->
-    <div id="main-system" class="container" style="display:none;">
+    <!-- ===================================================================
+         VIEW: PAINEL DA CONTABILIDADE (acesso direto, sem login)
+         =================================================================== -->
+    <div id="view-painel" class="container" style="display:none;">
 
         <!-- Top Bar -->
         <div class="topbar">
@@ -51,19 +27,15 @@
                 <span class="brand-logo">📋</span>
                 <div class="brand-text">
                     <span class="brand-name">Atos Societários</span>
-                    <span class="brand-sub">Sistema de Gestão Empresarial</span>
+                    <span class="brand-sub">Painel da Contabilidade</span>
                 </div>
             </div>
             <div class="topbar-user">
-                <span id="usuario-logado" class="user-name"></span>
-                <span id="usuario-role" class="role-badge"></span>
-                <button id="btn-admin" class="btn-topbar-gold" onclick="abrirPainelAdmin()" style="display:none;">⚙️ Administração</button>
-                <button class="btn-topbar" onclick="abrirModalNovoProcesso()">➕ Novo Processo</button>
-                <button class="btn-topbar-danger" onclick="fazerLogout()">Sair</button>
+                <button class="btn-topbar-gold" onclick="abrirModalNovoProcesso()">➕ Novo Processo</button>
             </div>
         </div>
 
-        <!-- Navegação por abas -->
+        <!-- Abas -->
         <nav class="tab-navigation">
             <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
             <button class="tab-btn" data-tab="aberturas">🏢 Aberturas</button>
@@ -71,8 +43,8 @@
             <button class="tab-btn" data-tab="encerramentos">❌ Encerramentos</button>
         </nav>
 
-        <!-- Filtro para Contabilidade -->
-        <div id="filtro-contabilidade" class="filtro-container" style="display:none;">
+        <!-- Filtros -->
+        <div class="filtro-container">
             <div class="filtro-content">
                 <label>Filtrar por:</label>
                 <select id="filtro-status" onchange="aplicarFiltro()">
@@ -87,7 +59,7 @@
             </div>
         </div>
 
-        <!-- ===== ABA: DASHBOARD ===== -->
+        <!-- DASHBOARD -->
         <section id="dashboard-section" class="tab-content active">
             <div class="section-header">
                 <div>
@@ -114,84 +86,195 @@
                 </div>
             </div>
             <h3 style="color:var(--navy);margin-bottom:16px;font-size:0.95rem;">Processos Recentes</h3>
-            <div id="processos-recentes">
-                <div class="empty-state">
-                    <span class="empty-icon">📋</span>
-                    <p>Nenhum processo cadastrado</p>
-                    <p class="empty-hint">Clique em "Novo Processo" para começar</p>
-                </div>
-            </div>
+            <div id="processos-recentes"></div>
         </section>
 
-        <!-- ===== ABA: ABERTURAS ===== -->
+        <!-- ABERTURAS -->
         <section id="aberturas-section" class="tab-content">
             <div class="section-header">
                 <div>
                     <h2>🏢 Abertura de Empresas</h2>
-                    <p>Processos de abertura em andamento</p>
+                    <p>Processos de abertura</p>
                 </div>
                 <div class="action-buttons">
                     <button class="btn btn-primary" onclick="abrirModalNovoProcesso('abertura')">+ Novo Processo</button>
                 </div>
             </div>
-            <div id="lista-aberturas">
-                <div class="empty-state">
-                    <span class="empty-icon">🏢</span>
-                    <p>Nenhuma abertura cadastrada</p>
-                </div>
-            </div>
+            <div id="lista-aberturas"></div>
         </section>
 
-        <!-- ===== ABA: ALTERAÇÕES ===== -->
+        <!-- ALTERAÇÕES -->
         <section id="alteracoes-section" class="tab-content">
             <div class="section-header">
                 <div>
                     <h2>✏️ Alteração do Contrato Social</h2>
-                    <p>Processos de alteração em andamento</p>
+                    <p>Processos de alteração</p>
                 </div>
                 <div class="action-buttons">
                     <button class="btn btn-primary" onclick="abrirModalNovoProcesso('alteracao')">+ Novo Processo</button>
                 </div>
             </div>
-            <div id="lista-alteracoes">
-                <div class="empty-state">
-                    <span class="empty-icon">✏️</span>
-                    <p>Nenhuma alteração cadastrada</p>
-                </div>
-            </div>
+            <div id="lista-alteracoes"></div>
         </section>
 
-        <!-- ===== ABA: ENCERRAMENTOS ===== -->
+        <!-- ENCERRAMENTOS -->
         <section id="encerramentos-section" class="tab-content">
             <div class="section-header">
                 <div>
                     <h2>❌ Encerramento de Empresas</h2>
-                    <p>Processos de encerramento em andamento</p>
+                    <p>Processos de encerramento</p>
                 </div>
                 <div class="action-buttons">
                     <button class="btn btn-primary" onclick="abrirModalNovoProcesso('encerramento')">+ Novo Processo</button>
                 </div>
             </div>
-            <div id="lista-encerramentos">
-                <div class="empty-state">
-                    <span class="empty-icon">❌</span>
-                    <p>Nenhum encerramento cadastrado</p>
-                </div>
-            </div>
+            <div id="lista-encerramentos"></div>
         </section>
 
         <footer>
-            <p>Sistema de Atos Societários — Dados armazenados no Firebase</p>
+            <p>Sistema de Atos Societários — Painel da Contabilidade</p>
         </footer>
     </div>
 
-    <!-- ===== MODAL: NOVO PROCESSO ===== -->
+    <!-- ===================================================================
+         VIEW: FORMULÁRIO DO CLIENTE (acesso via ?form=CODIGO)
+         =================================================================== -->
+    <div id="view-form" class="container" style="display:none;">
+        <div class="topbar">
+            <div class="topbar-brand">
+                <span class="brand-logo">📋</span>
+                <div class="brand-text">
+                    <span class="brand-name">Atos Societários</span>
+                    <span class="brand-sub">Formulário do Cliente</span>
+                </div>
+            </div>
+            <div class="topbar-user">
+                <span id="form-tipo-badge" class="role-badge"></span>
+            </div>
+        </div>
+
+        <div class="tab-content active">
+            <div class="section-header">
+                <div>
+                    <h2 id="form-titulo">Preencha os dados</h2>
+                    <p id="form-descricao">Preencha todos os campos solicitados abaixo</p>
+                </div>
+            </div>
+
+            <!-- Formulário será renderizado dinamicamente -->
+            <div id="form-cliente-container"></div>
+
+            <!-- Links (após salvar) -->
+            <div id="form-links-salvos" style="display:none;margin-top:24px;">
+                <div class="modal-section">
+                    <h3>🔗 Seus Links de Acesso</h3>
+                    <p style="font-size:0.82rem;color:var(--text-light);margin-bottom:12px;">Salve esses links! Você pode acessá-los a qualquer momento.</p>
+                    <div class="link-box">
+                        <label>Link do Formulário (edição)</label>
+                        <div class="link-row">
+                            <input type="text" id="link-form" readonly onclick="this.select()">
+                            <button class="btn btn-small btn-primary" onclick="copiarLink('link-form')">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="link-box" style="margin-top:10px;">
+                        <label>Link de Acompanhamento (visualização)</label>
+                        <div class="link-row">
+                            <input type="text" id="link-status" readonly onclick="this.select()">
+                            <button class="btn btn-small btn-primary" onclick="copiarLink('link-status')">Copiar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Sistema de Atos Societários — Formulário Online</p>
+        </footer>
+    </div>
+
+    <!-- ===================================================================
+         VIEW: STATUS DO CLIENTE (acesso via ?status=CODIGO)
+         =================================================================== -->
+    <div id="view-status" class="container" style="display:none;">
+        <div class="topbar">
+            <div class="topbar-brand">
+                <span class="brand-logo">📋</span>
+                <div class="brand-text">
+                    <span class="brand-name">Atos Societários</span>
+                    <span class="brand-sub">Acompanhamento</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content active">
+            <div class="section-header">
+                <div>
+                    <h2 id="status-titulo">Acompanhe seu processo</h2>
+                    <p id="status-descricao">Status atual do seu processo</p>
+                </div>
+            </div>
+
+            <!-- Pipeline -->
+            <div class="modal-section">
+                <h3>📍 Etapas do Processo</h3>
+                <div class="pipeline" id="status-pipeline"></div>
+            </div>
+
+            <!-- Info -->
+            <div class="modal-section">
+                <h3>📋 Dados Enviados</h3>
+                <div id="status-info"></div>
+            </div>
+
+            <!-- Documentos pendentes -->
+            <div class="modal-section" id="status-secao-upload" style="display:none;">
+                <h3>📎 Documentos Pendentes</h3>
+                <p style="font-size:0.82rem;color:var(--text-light);margin-bottom:12px;">Envie os documentos solicitados pela contabilidade</p>
+                <div class="upload-area" onclick="document.getElementById('status-upload-docs').click()">
+                    <input type="file" id="status-upload-docs" accept="image/*,.pdf" multiple onchange="handleUploadCliente(this)">
+                    <span class="upload-icon">📎</span>
+                    <span class="upload-text">Clique para enviar documentos</span>
+                    <span class="upload-hint">PDF ou imagem — pode selecionar vários</span>
+                </div>
+                <div class="uploaded-files" id="status-arquivos-docs"></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Sistema de Atos Societários — Acompanhamento</p>
+        </footer>
+    </div>
+
+    <!-- ===================================================================
+         VIEW: LINK INVÁLIDO
+         =================================================================== -->
+    <div id="view-invalido" style="display:none;">
+        <div class="auth-screen">
+            <div class="auth-container">
+                <div class="auth-header">
+                    <span class="auth-logo">⚠️</span>
+                    <h1>Link Inválido</h1>
+                    <p>Atos Societários</p>
+                </div>
+                <div class="auth-form" style="text-align:center;">
+                    <h2>Link não encontrado</h2>
+                    <p style="color:var(--text-mid);margin-bottom:20px;">Este link pode ter expirado ou estar incorreto.<br>Entre em contato com o escritório para obter um novo link.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         MODALS (apenas para o painel da contabilidade)
+         =================================================================== -->
+
+    <!-- MODAL: NOVO PROCESSO -->
     <div id="modal-novo-processo" class="modal" style="display:none;">
         <div class="modal-content modal-large">
             <div class="modal-header">
                 <div>
                     <h2>📋 Novo Processo</h2>
-                    <p class="modal-subtitle" id="novo-processo-subtitle">Preencha os dados do processo</p>
+                    <p class="modal-subtitle">Crie um novo processo e gere os links do cliente</p>
                 </div>
                 <button class="btn-close" onclick="fecharModalNovoProcesso()"></button>
             </div>
@@ -225,150 +308,26 @@
                     </div>
                 </div>
 
-                <!-- Dados da Empresa -->
-                <div class="modal-section" id="secao-empresa">
-                    <h3>Dados da Empresa</h3>
+                <!-- Nome do Cliente (referência interna) -->
+                <div class="modal-section">
+                    <h3>Referência</h3>
                     <div class="form-row">
                         <div class="form-field">
-                            <label>Razão Social (opção 1) <span class="required">*</span></label>
-                            <input type="text" id="processo-razao1" placeholder="Nome da empresa">
-                        </div>
-                        <div class="form-field">
-                            <label>Razão Social (opção 2) <span class="optional">(alternativa)</span></label>
-                            <input type="text" id="processo-razao2" placeholder="Nome alternativo">
-                        </div>
-                    </div>
-                    <div class="form-field" style="margin-top:12px;">
-                        <label>Endereço da Sede <span class="required">*</span></label>
-                        <textarea id="processo-endereco" placeholder="Endereço completo da sede"></textarea>
-                    </div>
-                    <div class="form-field" style="margin-top:12px;">
-                        <label>IPTU</label>
-                        <div class="upload-area" onclick="document.getElementById('upload-iptu').click()">
-                            <input type="file" id="upload-iptu" accept="image/*,.pdf" onchange="handleUpload(this, 'arquivos-iptu')">
-                            <span class="upload-icon">📎</span>
-                            <span class="upload-text">Clique para enviar o comprovante de IPTU</span>
-                            <span class="upload-hint">PDF ou imagem (JPG, PNG)</span>
-                        </div>
-                        <div class="uploaded-files" id="arquivos-iptu"></div>
-                    </div>
-                </div>
-
-                <!-- Sócios -->
-                <div class="modal-section" id="secao-socios">
-                    <h3>Sócios</h3>
-                    <div id="lista-socios-form">
-                        <!-- Sócios dinâmicos serão inseridos aqui -->
-                    </div>
-                    <button class="btn btn-outline" onclick="adicionarSocioForm()" style="margin-top:8px;">+ Adicionar Sócio</button>
-                </div>
-
-                <!-- Capital Social -->
-                <div class="modal-section" id="secao-capital">
-                    <h3>Capital Social</h3>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Capital Social Total (R$) <span class="required">*</span></label>
-                            <input type="number" id="processo-capital" placeholder="0,00" step="0.01" min="0" oninput="recalcularParticipacoes()">
+                            <label>Nome do Cliente / Empresa <span class="required">*</span></label>
+                            <input type="text" id="processo-cliente-nome" placeholder="Nome para identificação interna">
                         </div>
                     </div>
                 </div>
 
-                <!-- Atividades -->
-                <div class="modal-section" id="secao-atividades">
-                    <h3>Atividades da Empresa</h3>
-                    <div class="form-field">
-                        <label>Atividade Principal <span class="required">*</span></label>
-                        <input type="text" id="processo-atividade-principal" placeholder="CNAE ou descrição da atividade principal">
-                    </div>
-                    <div class="form-field" style="margin-top:12px;">
-                        <label>Atividade Secundária</label>
-                        <input type="text" id="processo-atividade-secundaria" placeholder="CNAE ou descrição das atividades secundárias">
-                    </div>
-                </div>
-
-                <!-- Dados CNPJ -->
-                <div class="modal-section" id="secao-cnpj">
-                    <h3>Dados para Cartão CNPJ</h3>
-                    <div class="aviso-publico">
-                        ⚠️ Essas informações ficam disponíveis para consulta pública e podem gerar ligações indesejadas. Recomendamos criar um e-mail específico para a empresa.
-                    </div>
-                    <div class="form-row" style="margin-top:12px;">
-                        <div class="form-field">
-                            <label>Telefone</label>
-                            <input type="text" id="processo-telefone" placeholder="(00) 00000-0000">
-                        </div>
-                        <div class="form-field">
-                            <label>E-mail</label>
-                            <input type="email" id="processo-email-cnpj" placeholder="email@empresa.com.br">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Porte e Regime -->
-                <div class="modal-section" id="secao-regime">
-                    <h3>Porte e Regime Tributário</h3>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Porte da Empresa <span class="required">*</span></label>
-                            <select id="processo-porte">
-                                <option value="">Selecione...</option>
-                                <option value="ME">ME — R$ 80.000,01 a R$ 360.000,00</option>
-                                <option value="EPP">EPP — R$ 360.000,01 a R$ 4.800.000,00</option>
-                            </select>
-                        </div>
-                        <div class="form-field">
-                            <label>Regime Tributário <span class="required">*</span></label>
-                            <select id="processo-regime">
-                                <option value="">Selecione...</option>
-                                <option value="simples">Simples Nacional</option>
-                                <option value="presumido">Lucro Presumido</option>
-                                <option value="real">Lucro Real</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- E-mails dos Sócios -->
-                <div class="modal-section" id="secao-emails">
-                    <h3>E-mails dos Sócios</h3>
-                    <p style="font-size:0.82rem;color:var(--text-light);margin-bottom:12px;">Para envio do contrato social</p>
-                    <div id="lista-emails-socios">
-                        <!-- Campos de e-mail dinâmicos -->
-                    </div>
-                </div>
-
-                <!-- Valor -->
-                <div class="modal-section" id="secao-valor">
-                    <h3>Valor do Serviço</h3>
-                    <div class="valor-calculado" style="font-size:1.1rem;text-align:center;padding:16px;">
-                        💰 Valor da Abertura: <strong>R$ 1.000,00</strong>
-                        <br><span style="font-size:0.78rem;font-weight:400;opacity:0.8;">Inclui: elaboração do contrato, registros e taxas</span>
-                    </div>
-                </div>
-
-                <!-- Documentos Pessoais -->
-                <div class="modal-section" id="secao-documentos">
-                    <h3>Documentos Pessoais dos Sócios</h3>
-                    <div class="upload-area" onclick="document.getElementById('upload-docs').click()">
-                        <input type="file" id="upload-docs" accept="image/*,.pdf" multiple onchange="handleUpload(this, 'arquivos-docs')">
-                        <span class="upload-icon">📎</span>
-                        <span class="upload-text">Clique para enviar RG, CPF e outros documentos</span>
-                        <span class="upload-hint">PDF ou imagem — pode selecionar vários arquivos</span>
-                    </div>
-                    <div class="uploaded-files" id="arquivos-docs"></div>
-                </div>
-
-                <!-- Botões -->
                 <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
                     <button class="btn btn-outline" onclick="fecharModalNovoProcesso()">Cancelar</button>
-                    <button class="btn btn-primary" onclick="salvarProcesso()">💾 Salvar Processo</button>
+                    <button class="btn btn-primary" onclick="criarProcesso()">🔗 Criar e Gerar Links</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ===== MODAL: DETALHE DO PROCESSO ===== -->
+    <!-- MODAL: DETALHE DO PROCESSO (contabilidade) -->
     <div id="modal-detalhe-processo" class="modal" style="display:none;">
         <div class="modal-content modal-large">
             <div class="modal-header">
@@ -379,64 +338,73 @@
                 <button class="btn-close" onclick="fecharModalDetalhe()"></button>
             </div>
             <div class="modal-body">
-                <!-- Pipeline de etapas -->
+                <!-- Pipeline -->
                 <div class="modal-section">
                     <h3>Etapas do Processo</h3>
-                    <div class="pipeline" id="detalhe-pipeline">
-                        <!-- Etapas serão renderizadas dinamicamente -->
-                    </div>
+                    <div class="pipeline" id="detalhe-pipeline"></div>
+                    <div id="detalhe-etapas-botoes" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
                 </div>
 
-                <!-- Dados do processo -->
+                <!-- Dados -->
                 <div class="modal-section">
                     <h3>Informações</h3>
-                    <div id="detalhe-info">
-                        <!-- Dados serão renderizados dinamicamente -->
+                    <div id="detalhe-info"></div>
+                </div>
+
+                <!-- Links -->
+                <div class="modal-section">
+                    <h3>🔗 Links do Cliente</h3>
+                    <div class="link-box">
+                        <label>Link do Formulário (edição)</label>
+                        <div class="link-row">
+                            <input type="text" id="detalhe-link-form" readonly onclick="this.select()">
+                            <button class="btn btn-small btn-primary" onclick="copiarLink('detalhe-link-form')">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="link-box" style="margin-top:10px;">
+                        <label>Link de Acompanhamento</label>
+                        <div class="link-row">
+                            <input type="text" id="detalhe-link-status" readonly onclick="this.select()">
+                            <button class="btn btn-small btn-primary" onclick="copiarLink('detalhe-link-status')">Copiar</button>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <button class="btn btn-small btn-outline" onclick="enviarLinksWhatsApp()">📱 Enviar via WhatsApp</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ===== MODAL: ADMINISTRAÇÃO ===== -->
-    <div id="modal-admin" class="modal" style="display:none;">
-        <div class="modal-content modal-large">
+    <!-- MODAL: LINKS GERADOS (após criar processo) -->
+    <div id="modal-links-gerados" class="modal" style="display:none;">
+        <div class="modal-content">
             <div class="modal-header">
-                <h2>⚙️ Painel de Administração</h2>
-                <button class="btn-close" onclick="fecharPainelAdmin()"></button>
+                <h2>✅ Processo Criado!</h2>
+                <button class="btn-close" onclick="fecharModalLinksGerados()"></button>
             </div>
             <div class="modal-body">
-                <div class="modal-section">
-                    <h3>Criar Novo Usuário</h3>
-                    <div class="form-group">
-                        <div class="edit-form-row">
-                            <input type="text" id="admin-nome" placeholder="Nome completo">
-                            <input type="text" id="admin-cpf" placeholder="Apenas números (11 dígitos)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
-                        </div>
-                        <div class="edit-form-row">
-                            <select id="admin-role">
-                                <option value="cliente">Cliente — acesso limitado</option>
-                                <option value="contabilidade">Contabilidade — acesso total</option>
-                            </select>
-                            <input type="password" id="admin-senha" placeholder="Senha inicial">
-                        </div>
-                        <button class="btn btn-primary" onclick="criarNovoUsuario()">Criar Usuário</button>
+                <p style="color:var(--text-mid);margin-bottom:16px;">Envie os links abaixo para o cliente preencher os dados e acompanhar o processo.</p>
+
+                <div class="link-box">
+                    <label>📝 Link do Formulário (cliente preenche os dados)</label>
+                    <div class="link-row">
+                        <input type="text" id="link-gerado-form" readonly onclick="this.select()">
+                        <button class="btn btn-small btn-primary" onclick="copiarLink('link-gerado-form')">Copiar</button>
                     </div>
                 </div>
-                <hr>
-                <div class="modal-section">
-                    <h3>Usuários Cadastrados</h3>
-                    <table id="admin-users-table">
-                        <thead>
-                            <tr>
-                                <th>Nome</th>
-                                <th>CPF</th>
-                                <th>Perfil</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="admin-users-tbody"></tbody>
-                    </table>
+
+                <div class="link-box" style="margin-top:12px;">
+                    <label>📊 Link de Acompanhamento (cliente vê o status)</label>
+                    <div class="link-row">
+                        <input type="text" id="link-gerado-status" readonly onclick="this.select()">
+                        <button class="btn btn-small btn-primary" onclick="copiarLink('link-gerado-status')">Copiar</button>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:20px;justify-content:center;">
+                    <button class="btn btn-success" onclick="enviarLinksWhatsApp()">📱 Enviar via WhatsApp</button>
+                    <button class="btn btn-outline" onclick="fecharModalLinksGerados()">Fechar</button>
                 </div>
             </div>
         </div>

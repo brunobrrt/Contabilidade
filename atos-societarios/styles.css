@@ -1045,3 +1045,42 @@ hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
 @media (max-width: 480px) {
     .dashboard-cards { grid-template-columns: 1fr; }
 }
+
+/*  Link boxes  */
+.link-box {
+    margin-bottom: 4px;
+}
+
+.link-box label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-bottom: 6px;
+}
+
+.link-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.link-row input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    color: var(--text-dark);
+    background: var(--surface);
+    font-family: 'Consolas', 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.link-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(45,97,150,.1);
+}
