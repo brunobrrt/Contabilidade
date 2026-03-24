@@ -12,6 +12,7 @@ include:
   - styles.css
   - firebase-config.js
   - RESETAR-SISTEMA.html
+  - atos-societarios
 
 # Excluir arquivos desnecessários da build
 exclude:
