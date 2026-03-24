@@ -155,6 +155,10 @@ async function gerarLinks() {
 }
 
 function getUrlBase() {
+    // file:// não tem origin, usa só o pathname
+    if (window.location.protocol === 'file:') {
+        return window.location.pathname.split('/').slice(-1)[0] || 'index.html';
+    }
     return window.location.origin + window.location.pathname;
 }
 
