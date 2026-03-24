@@ -107,7 +107,7 @@ async function rotear() {
 }
 
 function mostrarView(viewId) {
-    ['view-painel', 'view-form', 'view-status', 'view-invalido'].forEach(id => {
+    ['view-painel', 'view-form', 'view-status', 'view-invalido', 'view-expirado'].forEach(id => {
         document.getElementById(id).style.display = 'none';
     });
     document.getElementById(viewId).style.display = 'block';
@@ -409,6 +409,14 @@ function abrirDetalheProcesso(id) {
     document.getElementById('detalhe-link-form').value = montarLinkForm(processo.linkForm);
     document.getElementById('detalhe-link-status').value = montarLinkStatus(processo.linkStatus);
 
+    // Aviso se link de edição já foi usado
+    const formUsadoEl = document.getElementById('detalhe-form-usado');
+    if (processo.formLinkUsado) {
+        formUsadoEl.style.display = 'block';
+    } else {
+        formUsadoEl.style.display = 'none';
+    }
+
     // Pipeline
     renderizarPipeline(processo, 'detalhe-pipeline', true);
 
@@ -469,6 +477,12 @@ async function carregarFormulario(codigo) {
     const processo = await buscarPorLinkForm(codigo);
     if (!processo) {
         mostrarView('view-invalido');
+        return;
+    }
+
+    // Verificar se o link de edição já foi usado
+    if (processo.formLinkUsado) {
+        mostrarView('view-expirado');
         return;
     }
 
@@ -828,7 +842,9 @@ async function salvarFormularioCliente() {
         dados: dados,
         socios: socios,
         preenchidoEm: processoAtual.preenchidoEm || agora,
-        atualizadoEm: agora
+        atualizadoEm: agora,
+        formLinkUsado: true,
+        formLinkUsadoEm: agora
     };
 
     // Avançar etapa de solicitação se ainda em andamento
@@ -847,12 +863,13 @@ async function salvarFormularioCliente() {
         return;
     }
 
-    // Mostrar links
+    // Mostrar mensagem de sucesso e link de acompanhamento
     document.getElementById('form-links-salvos').style.display = 'block';
-    document.getElementById('link-form').value = montarLinkForm(processoAtual.linkForm);
+    document.getElementById('link-form').value = 'Este link foi utilizado e não pode mais ser acessado';
+    document.getElementById('link-form').disabled = true;
     document.getElementById('link-status').value = montarLinkStatus(processoAtual.linkStatus);
 
-    showToast('Dados salvos com sucesso! 🎉');
+    showToast('Dados salvos com sucesso! Este link de edição foi utilizado. 🎉');
 }
 
 function preencherFormulario(processo) {
@@ -1036,6 +1053,51 @@ function copiarLink(inputId) {
     const input = document.getElementById(inputId);
     input.select();
     navigator.clipboard.writeText(input.value).then(() => showToast('Link copiado! 📋'));
+}
+
+async function gerarNovoLinkForm() {
+    const processo = window._processoDetalhe;
+    if (!processo) return;
+
+    if (!confirm('Gerar um novo link de edição? O link anterior (se ainda válido) será invalidado.')) return;
+
+    showToast('Gerando novo link...');
+
+    let novoCodigo;
+    try {
+        do { novoCodigo = gerarCodigo(10); } while (await existeCodigo(novoCodigo));
+    } catch (e) {
+        showToast('Erro ao gerar código. Tente novamente.');
+        return;
+    }
+
+    try {
+        await atualizarProcessoNoFirestore(processo.id, {
+            linkForm: novoCodigo,
+            formLinkUsado: false,
+            formLinkUsadoEm: null,
+            atualizadoEm: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('Erro ao atualizar link:', e);
+        showToast('Erro ao salvar. Tente novamente.');
+        return;
+    }
+
+    // Atualizar modal
+    document.getElementById('detalhe-link-form').value = montarLinkForm(novoCodigo);
+    document.getElementById('detalhe-form-usado').style.display = 'none';
+
+    // Atualizar referência local
+    processo.linkForm = novoCodigo;
+    processo.formLinkUsado = false;
+    window._linksParaEnviarDetalhe = {
+        form: montarLinkForm(novoCodigo),
+        status: montarLinkStatus(processo.linkStatus),
+        tipo: TIPOS_LABEL[processo.tipo]
+    };
+
+    showToast('Novo link de edição gerado! Copie e envie ao cliente. ✅');
 }
 
 function enviarLinksWhatsApp() {

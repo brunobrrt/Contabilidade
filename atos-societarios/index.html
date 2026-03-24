@@ -167,21 +167,18 @@
             <!-- Links (após salvar) -->
             <div id="form-links-salvos" style="display:none;margin-top:24px;">
                 <div class="modal-section">
-                    <h3>🔗 Seus Links de Acesso</h3>
-                    <p style="font-size:0.82rem;color:var(--text-light);margin-bottom:12px;">Salve esses links! Você pode acessá-los a qualquer momento.</p>
-                    <div class="link-box">
-                        <label>Link do Formulário (edição)</label>
-                        <div class="link-row">
-                            <input type="text" id="link-form" readonly onclick="this.select()">
-                            <button class="btn btn-small btn-primary" onclick="copiarLink('link-form')">Copiar</button>
-                        </div>
+                    <h3>✅ Dados Salvos com Sucesso!</h3>
+                    <div class="aviso-publico" style="background:#d4edda;border-color:#1e6e45;color:#1e6e45;">
+                        <strong>Este link de edição foi utilizado e não pode mais ser acessado.</strong><br>
+                        Se precisar alterar alguma informação, entre em contato com o escritório.
                     </div>
-                    <div class="link-box" style="margin-top:10px;">
-                        <label>Link de Acompanhamento (visualização)</label>
+                    <div class="link-box" style="margin-top:16px;">
+                        <label>📊 Link de Acompanhamento (guarde este link!)</label>
                         <div class="link-row">
                             <input type="text" id="link-status" readonly onclick="this.select()">
                             <button class="btn btn-small btn-primary" onclick="copiarLink('link-status')">Copiar</button>
                         </div>
+                        <p style="font-size:0.78rem;color:var(--text-light);margin-top:4px;">Com este link você pode acompanhar o andamento do seu processo a qualquer momento.</p>
                     </div>
                 </div>
             </div>
@@ -259,6 +256,29 @@
                 <div class="auth-form" style="text-align:center;">
                     <h2>Link não encontrado</h2>
                     <p style="color:var(--text-mid);margin-bottom:20px;">Este link pode ter expirado ou estar incorreto.<br>Entre em contato com o escritório para obter um novo link.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         VIEW: LINK DE EDIÇÃO EXPIRADO
+         =================================================================== -->
+    <div id="view-expirado" style="display:none;">
+        <div class="auth-screen">
+            <div class="auth-container">
+                <div class="auth-header">
+                    <span class="auth-logo">🔒</span>
+                    <h1>Link Utilizado</h1>
+                    <p>Atos Societários</p>
+                </div>
+                <div class="auth-form" style="text-align:center;">
+                    <h2>Este link já foi utilizado</h2>
+                    <p style="color:var(--text-mid);margin-bottom:12px;">Os dados já foram enviados com sucesso.</p>
+                    <p style="color:var(--text-mid);margin-bottom:20px;">Se precisar alterar alguma informação, entre em contato com o escritório para solicitar um <strong>novo link de edição</strong>.</p>
+                    <div class="aviso-publico" style="text-align:left;">
+                        📊 Você pode acompanhar o status do seu processo pelo <strong>link de acompanhamento</strong> que foi enviado junto com este link.
+                    </div>
                 </div>
             </div>
         </div>
@@ -355,20 +375,24 @@
                 <div class="modal-section">
                     <h3>🔗 Links do Cliente</h3>
                     <div class="link-box">
-                        <label>Link do Formulário (edição)</label>
+                        <label>📝 Link do Formulário (edição — uso único)</label>
                         <div class="link-row">
                             <input type="text" id="detalhe-link-form" readonly onclick="this.select()">
                             <button class="btn btn-small btn-primary" onclick="copiarLink('detalhe-link-form')">Copiar</button>
                         </div>
+                        <p id="detalhe-form-usado" style="font-size:0.78rem;color:var(--warning);margin-top:4px;display:none;">⚠️ Este link já foi utilizado pelo cliente</p>
                     </div>
-                    <div class="link-box" style="margin-top:10px;">
-                        <label>Link de Acompanhamento</label>
+                    <div style="margin-top:10px;">
+                        <button class="btn btn-small btn-warning" onclick="gerarNovoLinkForm()">🔄 Gerar Novo Link de Edição</button>
+                    </div>
+                    <div class="link-box" style="margin-top:12px;">
+                        <label>📊 Link de Acompanhamento (permanente)</label>
                         <div class="link-row">
                             <input type="text" id="detalhe-link-status" readonly onclick="this.select()">
                             <button class="btn btn-small btn-primary" onclick="copiarLink('detalhe-link-status')">Copiar</button>
                         </div>
                     </div>
-                    <div style="margin-top:10px;">
+                    <div style="display:flex;gap:8px;margin-top:10px;">
                         <button class="btn btn-small btn-outline" onclick="enviarLinksWhatsApp()">📱 Enviar via WhatsApp</button>
                     </div>
                 </div>
