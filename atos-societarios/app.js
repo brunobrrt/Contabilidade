@@ -8,6 +8,8 @@ let processos = [];
 let processoAtual = null; // processo sendo visualizado/editado
 let sociosFormCount = 0;
 let arquivosUpload = { iptu: [], docs: [] };
+let db = null; // Firestore instance
+let unsubscribePainel = null; // listener em tempo real
 
 // ===== CONFIGURAÇÕES =====
 const ETAPAS_POR_TIPO = {
@@ -60,44 +62,47 @@ const ESTADOS_CIVIS = { 'solteiro': 'Solteiro(a)', 'casado': 'Casado(a)', 'divor
 const REGIMES_CASAMENTO = { 'comunhao-parcial': 'Comunhão Parcial', 'comunhao-universal': 'Comunhão Universal', 'separacao-total': 'Separação Total', 'participacao-final': 'Participação Final nos Aquestos' };
 
 // ===== INICIALIZAÇÃO =====
-document.addEventListener('DOMContentLoaded', () => {
-    inicializarFirebase();
-    carregarProcessos();
+document.addEventListener('DOMContentLoaded', async () => {
+    await inicializarFirebase();
     rotear();
 });
 
-function inicializarFirebase() {
+async function inicializarFirebase() {
     try {
-        if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
+        if (typeof firebase === 'undefined') {
+            console.error('Firebase SDK não carregou. Verifique a conexão.');
+            showToast('Erro: não foi possível conectar ao servidor');
+            return;
+        }
+        if (firebase.apps.length === 0) {
             firebase.initializeApp(firebaseConfig);
         }
+        db = firebase.firestore();
+        console.log('Firebase conectado ✓');
     } catch (e) {
-        console.warn('Firebase não configurado. Usando modo local.');
+        console.error('Erro ao inicializar Firebase:', e);
+        showToast('Erro ao conectar ao servidor');
     }
 }
 
 // ===== ROTEAMENTO =====
-function rotear() {
+async function rotear() {
     const params = new URLSearchParams(window.location.search);
     document.getElementById('loading-screen').style.display = 'none';
 
-    if (params.has('painel')) {
-        mostrarView('view-painel');
-        configurarAbas();
-        renderizarPainel();
-    } else if (params.has('form')) {
+    if (params.has('form')) {
         const codigo = params.get('form');
         mostrarView('view-form');
-        carregarFormulario(codigo);
+        await carregarFormulario(codigo);
     } else if (params.has('status')) {
         const codigo = params.get('status');
         mostrarView('view-status');
-        carregarStatus(codigo);
+        await carregarStatus(codigo);
     } else {
-        // Sem parâmetro → mostrar painel (atalho para contabilidade)
+        // Sem parâmetro ou ?painel → painel da contabilidade
         mostrarView('view-painel');
         configurarAbas();
-        renderizarPainel();
+        iniciarPainel();
     }
 }
 
@@ -130,15 +135,23 @@ function gerarCodigo(tamanho = 8) {
     return codigo;
 }
 
-function gerarLinks(processoId) {
+async function gerarLinks() {
     let codigoForm, codigoStatus;
-    do { codigoForm = gerarCodigo(10); } while (existeCodigo(codigoForm));
-    do { codigoStatus = gerarCodigo(10); } while (existeCodigo(codigoStatus));
-    return { form: codigoForm, status: codigoStatus };
-}
+    let tentativas = 0;
+    do {
+        codigoForm = gerarCodigo(10);
+        tentativas++;
+        if (tentativas > 20) throw new Error('Não foi possível gerar código único');
+    } while (await existeCodigo(codigoForm));
 
-function existeCodigo(codigo) {
-    return processos.some(p => p.linkForm === codigo || p.linkStatus === codigo);
+    tentativas = 0;
+    do {
+        codigoStatus = gerarCodigo(10);
+        tentativas++;
+        if (tentativas > 20) throw new Error('Não foi possível gerar código único');
+    } while (await existeCodigo(codigoStatus));
+
+    return { form: codigoForm, status: codigoStatus };
 }
 
 function getUrlBase() {
@@ -153,34 +166,118 @@ function montarLinkStatus(codigo) {
     return getUrlBase() + '?status=' + codigo;
 }
 
-// ===== PERSISTÊNCIA =====
-function carregarProcessos() {
-    const salvos = localStorage.getItem('atos-societarios-processos');
-    if (salvos) processos = JSON.parse(salvos);
+// ===== PERSISTÊNCIA (FIRESTORE) =====
+const COLLECTION = 'atos-societarios';
+
+// Carregar processo único por ID (para formulário/status do cliente)
+async function buscarProcessoPorId(id) {
+    if (!db) return null;
+    try {
+        const doc = await db.collection(COLLECTION).doc(id).get();
+        if (doc.exists) return { id: doc.id, ...doc.data() };
+    } catch (e) {
+        console.error('Erro ao buscar processo:', e);
+    }
+    return null;
 }
 
-function salvarProcessos() {
-    localStorage.setItem('atos-societarios-processos', JSON.stringify(processos));
+// Buscar por código do formulário (consulta única)
+async function buscarPorLinkForm(codigo) {
+    if (!db) return null;
+    try {
+        const snap = await db.collection(COLLECTION).where('linkForm', '==', codigo).limit(1).get();
+        if (!snap.empty) {
+            const doc = snap.docs[0];
+            return { id: doc.id, ...doc.data() };
+        }
+    } catch (e) {
+        console.error('Erro ao buscar por linkForm:', e);
+    }
+    return null;
 }
 
-function salvarProcesso(processo) {
-    const idx = processos.findIndex(p => p.id === processo.id);
-    if (idx >= 0) processos[idx] = processo;
-    else processos.push(processo);
-    salvarProcessos();
+// Buscar por código de status (consulta única)
+async function buscarPorLinkStatus(codigo) {
+    if (!db) return null;
+    try {
+        const snap = await db.collection(COLLECTION).where('linkStatus', '==', codigo).limit(1).get();
+        if (!snap.empty) {
+            const doc = snap.docs[0];
+            return { id: doc.id, ...doc.data() };
+        }
+    } catch (e) {
+        console.error('Erro ao buscar por linkStatus:', e);
+    }
+    return null;
 }
 
-function buscarPorLinkForm(codigo) {
-    return processos.find(p => p.linkForm === codigo);
+// Verificar se código já existe (para gerarLinks)
+async function existeCodigo(codigo) {
+    if (!db) return false;
+    try {
+        const snapForm = await db.collection(COLLECTION).where('linkForm', '==', codigo).limit(1).get();
+        if (!snapForm.empty) return true;
+        const snapStatus = await db.collection(COLLECTION).where('linkStatus', '==', codigo).limit(1).get();
+        if (!snapStatus.empty) return true;
+    } catch (e) {
+        console.error('Erro ao verificar código:', e);
+    }
+    return false;
 }
 
-function buscarPorLinkStatus(codigo) {
-    return processos.find(p => p.linkStatus === codigo);
+// Criar processo no Firestore
+async function criarProcessoNoFirestore(processo) {
+    if (!db) throw new Error('Firestore não conectado');
+    const docRef = await db.collection(COLLECTION).add(processo);
+    return docRef.id;
+}
+
+// Atualizar processo no Firestore
+async function atualizarProcessoNoFirestore(id, dados) {
+    if (!db) throw new Error('Firestore não conectado');
+    await db.collection(COLLECTION).doc(id).update(dados);
+}
+
+// Listener em tempo real para o painel (lista todos os processos)
+function escutarProcessos(callback) {
+    if (!db) return null;
+    return db.collection(COLLECTION)
+        .orderBy('criadoEm', 'desc')
+        .onSnapshot(snap => {
+            const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            processos = lista;
+            callback(lista);
+        }, error => {
+            console.error('Erro no listener:', error);
+            showToast('Erro ao carregar processos');
+        });
+}
+
+// Listener em tempo real para 1 processo (cliente)
+function escutarProcesso(processoId, callback) {
+    if (!db) return null;
+    return db.collection(COLLECTION).doc(processoId)
+        .onSnapshot(doc => {
+            if (doc.exists) {
+                callback({ id: doc.id, ...doc.data() });
+            }
+        }, error => {
+            console.error('Erro no listener do processo:', error);
+        });
 }
 
 // ===================================================================
 //  PAINEL DA CONTABILIDADE
 // ===================================================================
+
+function iniciarPainel() {
+    // Listener em tempo real — atualiza automaticamente quando dados mudam
+    if (unsubscribePainel) unsubscribePainel();
+    unsubscribePainel = escutarProcessos(lista => {
+        processos = lista;
+        renderizarPainel();
+    });
+}
 
 function renderizarPainel() {
     renderizarDashboard();
@@ -218,7 +315,7 @@ function atualizarFormularioProcesso() {
 }
 
 // Criar processo (contabilidade)
-function criarProcesso() {
+async function criarProcesso() {
     const tipo = document.getElementById('processo-tipo').value;
     if (!tipo) { showToast('Selecione o tipo de ato societário'); return; }
 
@@ -226,35 +323,50 @@ function criarProcesso() {
     if (!clienteNome) { showToast('Preencha o nome do cliente'); return; }
 
     const subtipo = document.getElementById('processo-subtipo')?.value || null;
-    const links = gerarLinks();
+
+    showToast('Gerando links...');
+
+    let links;
+    try {
+        links = await gerarLinks();
+    } catch (e) {
+        showToast('Erro ao gerar links. Tente novamente.');
+        return;
+    }
+
+    const etapasConfig = ETAPAS_POR_TIPO[tipo] || [];
+    const etapas = {};
+    etapasConfig.forEach(etapa => {
+        etapas[etapa.id] = { status: 'pendente', data: null, observacao: '' };
+    });
+    if (etapasConfig.length > 0) {
+        etapas[etapasConfig[0].id].status = 'em-andamento';
+    }
 
     const processo = {
-        id: Date.now().toString(),
         tipo: tipo,
         subtipo: subtipo,
         clienteNome: clienteNome,
         linkForm: links.form,
         linkStatus: links.status,
-        // Dados serão preenchidos pelo cliente
         dados: {},
         socios: [],
-        etapas: {},
+        etapas: etapas,
         status: 'pendente',
         criadoEm: new Date().toISOString(),
         atualizadoEm: new Date().toISOString(),
         preenchidoEm: null
     };
 
-    // Inicializar etapas
-    const etapasConfig = ETAPAS_POR_TIPO[tipo] || [];
-    etapasConfig.forEach(etapa => {
-        processo.etapas[etapa.id] = { status: 'pendente', data: null, observacao: '' };
-    });
-    if (etapasConfig.length > 0) {
-        processo.etapas[etapasConfig[0].id].status = 'em-andamento';
+    try {
+        const novoId = await criarProcessoNoFirestore(processo);
+        processo.id = novoId;
+    } catch (e) {
+        console.error('Erro ao salvar processo:', e);
+        showToast('Erro ao salvar. Tente novamente.');
+        return;
     }
 
-    salvarProcesso(processo);
     fecharModalNovoProcesso();
 
     // Mostrar modal com links gerados
@@ -263,10 +375,14 @@ function criarProcesso() {
     document.getElementById('modal-links-gerados').style.display = 'flex';
 
     // Guardar pra enviar WhatsApp
-    window._linksParaEnviar = { form: montarLinkForm(links.form), status: montarLinkStatus(links.status), cliente: clienteNome };
+    window._linksParaEnviar = {
+        form: montarLinkForm(links.form),
+        status: montarLinkStatus(links.status),
+        cliente: clienteNome,
+        tipo: TIPOS_LABEL[tipo]
+    };
 
-    renderizarPainel();
-    showToast('Processo criado! Envie os links ao cliente.');
+    showToast('Processo criado! Envie os links ao cliente. ✅');
 }
 
 function fecharModalLinksGerados() {
@@ -312,7 +428,7 @@ function fecharModalDetalhe() {
     document.getElementById('modal-detalhe-processo').style.display = 'none';
 }
 
-function avancarEtapa(processoId, etapaId, novoStatus) {
+async function avancarEtapa(processoId, etapaId, novoStatus) {
     const processo = processos.find(p => p.id === processoId);
     if (!processo) return;
 
@@ -325,20 +441,19 @@ function avancarEtapa(processoId, etapaId, novoStatus) {
     const todasConcluidas = etapasConfig.every(e => processo.etapas[e.id]?.status === 'concluido');
     processo.status = todasConcluidas ? 'concluido' : 'em-andamento';
 
-    // Se avançou uma etapa, marcar próxima como em-andamento
-    if (novoStatus === 'concluido') {
-        const idx = etapasConfig.findIndex(e => e.id === etapaId);
-        if (idx >= 0 && idx < etapasConfig.length - 1) {
-            const proxima = etapasConfig[idx + 1];
-            if (processo.etapas[proxima.id]?.status === 'pendente' && proxima.id !== 'exigencia') {
-                // Não avança automaticamente pra exigência
-            }
-        }
+    try {
+        await atualizarProcessoNoFirestore(processoId, {
+            etapas: processo.etapas,
+            status: processo.status,
+            atualizadoEm: processo.atualizadoEm
+        });
+    } catch (e) {
+        console.error('Erro ao atualizar etapa:', e);
+        showToast('Erro ao salvar. Tente novamente.');
+        return;
     }
 
-    salvarProcesso(processo);
-    abrirDetalheProcesso(processoId); // re-render
-    renderizarPainel();
+    abrirDetalheProcesso(processoId);
     showToast('Etapa atualizada!');
 }
 
@@ -346,8 +461,8 @@ function avancarEtapa(processoId, etapaId, novoStatus) {
 //  FORMULÁRIO DO CLIENTE (acesso via ?form=CODIGO)
 // ===================================================================
 
-function carregarFormulario(codigo) {
-    const processo = buscarPorLinkForm(codigo);
+async function carregarFormulario(codigo) {
+    const processo = await buscarPorLinkForm(codigo);
     if (!processo) {
         mostrarView('view-invalido');
         return;
@@ -378,11 +493,21 @@ function carregarFormulario(codigo) {
     }
 
     // Sócio inicial
+    sociosFormCount = 0;
     if (tipo !== 'encerramento' && (!processo.socios || processo.socios.length === 0)) {
         adicionarSocioForm();
     } else if (processo.socios && processo.socios.length > 0) {
         processo.socios.forEach((s, i) => adicionarSocioForm(s));
     }
+
+    // Escutar atualizações em tempo real
+    escutarProcesso(processo.id, atualizado => {
+        processoAtual = atualizado;
+        // Se dados mudaram de outra aba/dispositivo, atualizar
+        if (atualizado.preenchidoEm && !document.getElementById('fc-razao1')?.value) {
+            preencherFormulario(atualizado);
+        }
+    });
 }
 
 function montarFormularioHTML(processo) {
@@ -651,7 +776,7 @@ function handleUploadCliente(input) {
 }
 
 // ===== SALVAR FORMULÁRIO DO CLIENTE =====
-function salvarFormularioCliente() {
+async function salvarFormularioCliente() {
     if (!processoAtual) return;
 
     // Coletar dados
@@ -681,7 +806,7 @@ function salvarFormularioCliente() {
         }
     });
 
-    processoAtual.dados = {
+    const dados = {
         razaoSocial: razao1 || '',
         razaoSocial2: document.getElementById('fc-razao2')?.value.trim() || '',
         endereco: document.getElementById('fc-endereco')?.value.trim() || '',
@@ -693,18 +818,30 @@ function salvarFormularioCliente() {
         porte: document.getElementById('fc-porte')?.value || '',
         regimeTributario: document.getElementById('fc-regime')?.value || ''
     };
-    processoAtual.socios = socios;
-    processoAtual.preenchidoEm = new Date().toISOString();
-    processoAtual.atualizadoEm = new Date().toISOString();
 
-    // Avançar etapa de solicitação se ainda pendente
+    const agora = new Date().toISOString();
+    const atualizacoes = {
+        dados: dados,
+        socios: socios,
+        preenchidoEm: processoAtual.preenchidoEm || agora,
+        atualizadoEm: agora
+    };
+
+    // Avançar etapa de solicitação se ainda em andamento
     if (processoAtual.etapas?.solicitacao?.status === 'em-andamento') {
-        processoAtual.etapas.solicitacao.status = 'concluido';
-        processoAtual.etapas.solicitacao.data = new Date().toISOString();
-        // Próxima etapa fica pra contabilidade gerenciar
+        const novasEtapas = { ...processoAtual.etapas };
+        novasEtapas.solicitacao = { status: 'concluido', data: agora, observacao: '' };
+        atualizacoes.etapas = novasEtapas;
     }
 
-    salvarProcesso(processoAtual);
+    try {
+        await atualizarProcessoNoFirestore(processoAtual.id, atualizacoes);
+        processoAtual = { ...processoAtual, ...atualizacoes };
+    } catch (e) {
+        console.error('Erro ao salvar:', e);
+        showToast('Erro ao salvar. Tente novamente.');
+        return;
+    }
 
     // Mostrar links
     document.getElementById('form-links-salvos').style.display = 'block';
@@ -734,8 +871,8 @@ function preencherFormulario(processo) {
 //  STATUS DO CLIENTE (acesso via ?status=CODIGO)
 // ===================================================================
 
-function carregarStatus(codigo) {
-    const processo = buscarPorLinkStatus(codigo);
+async function carregarStatus(codigo) {
+    const processo = await buscarPorLinkStatus(codigo);
     if (!processo) {
         mostrarView('view-invalido');
         return;
@@ -756,6 +893,12 @@ function carregarStatus(codigo) {
     if (processo.status !== 'concluido') {
         document.getElementById('status-secao-upload').style.display = 'block';
     }
+
+    // Listener em tempo real pra atualizar automaticamente
+    escutarProcesso(processo.id, atualizado => {
+        renderizarPipeline(atualizado, 'status-pipeline', false);
+        renderizarInfoProcesso(atualizado, 'status-info');
+    });
 }
 
 // ===================================================================
