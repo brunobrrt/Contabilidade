@@ -422,6 +422,48 @@ body {
 
 .filtro-content select:focus { outline: none; border-color: var(--accent); }
 
+/* Filtro de data por planilha */
+.filtro-data-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+}
+.filtro-data-label {
+    font-weight: 700;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-right: 4px;
+}
+.filtro-data-container label {
+    font-size: 0.82rem;
+    color: var(--text-mid);
+    font-weight: 600;
+}
+.filtro-data-container input[type="date"],
+.filtro-data-container select {
+    padding: 6px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    font-size: 0.85rem;
+    color: var(--text-dark);
+    background: var(--white);
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+.filtro-data-container input[type="date"]:focus,
+.filtro-data-container select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 /*  Seção / Cabeçalho da Planilha  */
 .section-header {
     display: flex;
