@@ -4,9 +4,15 @@ Sistema web para gestão de **Abertura**, **Alteração** e **Encerramento** de 
 
 ## Como Usar
 
-1. Abra `index.html` no navegador
-2. Faça login (CPF `00000000000` / senha `admin123` para contabilidade)
-3. Clique em "Novo Processo" para criar uma solicitação
+### Contabilidade
+1. Abra `index.html` no navegador (painel direto)
+2. Clique em "Novo Processo" pra criar uma solicitação
+3. O sistema gera 2 links únicos — copie e envie pro cliente
+
+### Cliente
+1. Acessa o **link do formulário** (`?form=CODIGO`) → preenche os dados
+2. Acessa o **link de acompanhamento** (`?status=CODIGO`) → vê o status
+3. Sem login necessário!
 
 ## Funcionalidades
 

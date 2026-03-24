@@ -19,11 +19,15 @@ Sistema web para escritório de contabilidade gerenciar **Abertura**, **Alteraç
 
 ## 🏗️ Funcionalidades por Módulo
 
-### 🔐 1. Autenticação
+### 🔐 1. Acesso (sem login)
 
-- Login por **CPF + senha** (padrão Firebase, reutilizar do sistema anterior)
-- Dois perfis: **Contabilidade** (acesso total) e **Cliente** (acesso limitado aos próprios processos)
-- Painel de administração para criar usuários (apenas contabilidade)
+- **Contabilidade:** acessa o painel direto pela URL principal
+- **Cliente:** acessa via **links únicos** gerados pelo sistema
+  - `/?form={codigo}` → preenche os dados do processo (edição)
+  - `/?status={codigo}` → acompanha o status (visualização)
+- Cada processo gera **2 códigos aleatórios** diferentes
+- O cliente **não precisa de login** — só acessar o link
+- A contabilidade copia/envia os links via WhatsApp para o cliente
 
 ---
 
@@ -226,7 +230,7 @@ atos-societarios/
 
 ## ❓ Pendências de Definição
 
-- [ ] Como o cliente acessa? (login CPF+senha ou link único?)
+- [x] Como o cliente acessa? → **Links únicos (sem login)**
 - [ ] Pagamento online (R$ 1.000) ou manual?
 - [ ] Quantas pessoas na contabilidade vão usar?
 - [ ] ClickSign tem API disponível?
