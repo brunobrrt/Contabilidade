@@ -1097,3 +1097,55 @@ hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(45,97,150,.1);
 }
+
+/* ===== Info Section (detalhe do processo) ===== */
+.info-section {
+    margin-bottom: 4px;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: var(--text-mid);
+    min-width: 140px;
+    flex-shrink: 0;
+}
+
+.info-value {
+    text-align: right;
+    color: var(--text-dark);
+    word-break: break-word;
+}
+
+/* ===== Sócio Card (expand/collapse) ===== */
+.socio-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    padding: 0 12px;
+    background: var(--white);
+    transition: box-shadow 0.2s;
+}
+
+.socio-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.socio-detalhe {
+    background: #f8f9fa;
+    border-radius: 0 0 var(--radius) var(--radius);
+    margin: 0 -12px;
+    padding: 8px 12px 12px !important;
+}

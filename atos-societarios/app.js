@@ -717,6 +717,10 @@ function adicionarSocioForm(dadosExistentes) {
                 </div>
             </div>
             <div class="form-row" style="margin-top:10px;">
+                <div class="form-field" style="flex:0 0 200px;">
+                    <label>CPF</label>
+                    <input type="text" id="socio-cpf-${idx}" placeholder="000.000.000-00" maxlength="14" value="${s.cpf || ''}" oninput="aplicarMascaraCPF(this)">
+                </div>
                 <div class="form-field">
                     <label>Nacionalidade</label>
                     <input type="text" id="socio-nacionalidade-${idx}" value="${s.nacionalidade || 'Brasileira'}">
@@ -725,6 +729,8 @@ function adicionarSocioForm(dadosExistentes) {
                     <label>Profissão</label>
                     <input type="text" id="socio-profissao-${idx}" value="${s.profissao || ''}">
                 </div>
+            </div>
+            <div class="form-row" style="margin-top:10px;">
                 <div class="form-field">
                     <label>Estado Civil</label>
                     <select id="socio-estado-civil-${idx}">
@@ -732,8 +738,6 @@ function adicionarSocioForm(dadosExistentes) {
                         ${Object.entries(ESTADOS_CIVIS).map(([v, l]) => `<option value="${v}" ${s.estadoCivil === v ? 'selected' : ''}>${l}</option>`).join('')}
                     </select>
                 </div>
-            </div>
-            <div class="form-row" style="margin-top:10px;">
                 <div class="form-field">
                     <label>Regime de Casamento</label>
                     <select id="socio-regime-${idx}">
@@ -816,6 +820,7 @@ async function salvarFormularioCliente() {
             socios.push({
                 nome,
                 percentual: parseFloat(document.getElementById('socio-percentual-' + idx)?.value) || 0,
+                cpf: document.getElementById('socio-cpf-' + idx)?.value.trim() || '',
                 nacionalidade: document.getElementById('socio-nacionalidade-' + idx)?.value || '',
                 profissao: document.getElementById('socio-profissao-' + idx)?.value || '',
                 estadoCivil: document.getElementById('socio-estado-civil-' + idx)?.value || '',
@@ -949,34 +954,121 @@ function renderizarPipeline(processo, containerId, editavel) {
 function renderizarInfoProcesso(processo, containerId) {
     const container = document.getElementById(containerId);
     const d = processo.dados || {};
+    const tipo = processo.tipo;
 
     let html = '';
 
-    if (d.razaoSocial) {
-        html += `<div class="form-row" style="gap:20px;">
-            <div class="form-field"><label>Razão Social</label><p style="padding:8px 0;font-weight:600;">${d.razaoSocial}</p></div>
-            ${d.razaoSocial2 ? `<div class="form-field"><label>Razão Social (opção 2)</label><p style="padding:8px 0;">${d.razaoSocial2}</p></div>` : ''}
-        </div>`;
+    // Dados da Empresa
+    if (d.razaoSocial || d.endereco || d.capitalSocial) {
+        html += `<div class="info-section">
+            <h4 style="font-size:0.78rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">🏢 Dados da Empresa</h4>`;
+
+        if (d.razaoSocial) {
+            html += `<div class="info-row"><span class="info-label">Razão Social</span><span class="info-value">${d.razaoSocial}</span></div>`;
+        }
+        if (d.razaoSocial2) {
+            html += `<div class="info-row"><span class="info-label">Razão Social (opção 2)</span><span class="info-value">${d.razaoSocial2}</span></div>`;
+        }
+        if (d.endereco) {
+            html += `<div class="info-row"><span class="info-label">Endereço</span><span class="info-value">${d.endereco}</span></div>`;
+        }
+        if (d.capitalSocial) {
+            html += `<div class="info-row"><span class="info-label">Capital Social</span><span class="info-value" style="font-weight:700;">R$ ${d.capitalSocial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>`;
+        }
+        if (d.atividadePrincipal) {
+            html += `<div class="info-row"><span class="info-label">Atividade Principal</span><span class="info-value">${d.atividadePrincipal}</span></div>`;
+        }
+        if (d.atividadeSecundaria) {
+            html += `<div class="info-row"><span class="info-label">Atividade Secundária</span><span class="info-value">${d.atividadeSecundaria}</span></div>`;
+        }
+        if (d.telefone) {
+            html += `<div class="info-row"><span class="info-label">Telefone</span><span class="info-value">${d.telefone}</span></div>`;
+        }
+        if (d.emailCNPJ) {
+            html += `<div class="info-row"><span class="info-label">E-mail CNPJ</span><span class="info-value">${d.emailCNPJ}</span></div>`;
+        }
+        if (d.porte) {
+            html += `<div class="info-row"><span class="info-label">Porte</span><span class="info-value">${PORTES[d.porte] || d.porte}</span></div>`;
+        }
+        if (d.regimeTributario) {
+            html += `<div class="info-row"><span class="info-label">Regime Tributário</span><span class="info-value">${REGIMES[d.regimeTributario] || d.regimeTributario}</span></div>`;
+        }
+        html += `</div>`;
     }
 
-    if (d.endereco) html += `<div class="form-field" style="margin-top:12px;"><label>Endereço</label><p style="padding:8px 0;">${d.endereco}</p></div>`;
-
+    // Sócios com busca e expand/collapse
     if (processo.socios?.length) {
-        html += `<div style="margin-top:16px;">
-            <label style="font-size:0.75rem;font-weight:700;color:var(--text-mid);text-transform:uppercase;letter-spacing:.4px;">Sócios (${processo.socios.length})</label>
-            ${processo.socios.map(s => `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
-                <strong>${s.nome}</strong>${s.percentual ? ` — ${s.percentual}%` : ''}
-                ${s.administrador ? ' <span style="color:var(--gold);font-weight:700;">Admin</span>' : ''}
-                ${s.responsavelRF ? ' <span style="color:var(--accent);font-size:0.78rem;">Responsável RF</span>' : ''}
-            </div>`).join('')}
+        const totalPct = processo.socios.reduce((sum, s) => sum + (s.percentual || 0), 0);
+        html += `<div class="info-section" style="margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <h4 style="font-size:0.78rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.4px;">👥 Sócios (${processo.socios.length}) — ${totalPct}% total</h4>
+                <button class="btn btn-small btn-outline" onclick="toggleTodosSocios()" id="btn-toggle-socios" style="font-size:0.72rem;">▼ Expandir todos</button>
+            </div>
+            <input type="text" id="filtro-socios-modal" placeholder="🔍 Buscar sócio..." oninput="filtrarSociosModal()" style="width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:0.82rem;margin-bottom:10px;">
+            <div id="lista-socios-modal">
+                ${processo.socios.map((s, i) => montarSocioCard(s, i)).join('')}
+            </div>
         </div>`;
     }
 
-    if (d.capitalSocial) html += `<div class="form-field" style="margin-top:12px;"><label>Capital Social</label><p style="padding:8px 0;font-weight:600;">R$ ${d.capitalSocial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>`;
-
-    if (!html) html = '<p style="color:var(--text-light);">Aguardando preenchimento do cliente...</p>';
+    if (!html) html = '<p style="color:var(--text-light);">⏳ Aguardando preenchimento do cliente...</p>';
 
     container.innerHTML = html;
+}
+
+function montarSocioCard(s, i) {
+    const badges = [];
+    if (s.administrador) badges.push('<span style="background:var(--gold);color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;">Admin</span>');
+    if (s.responsavelRF) badges.push('<span style="background:var(--accent);color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;">Resp. RF</span>');
+
+    return `<div class="socio-card" id="socio-card-${i}" data-nome="${(s.nome || '').toLowerCase()}">
+        <div class="socio-card-header" onclick="toggleSocioDetalhe(${i})" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:8px 0;">
+            <div>
+                <strong>${s.nome || 'Sem nome'}</strong>
+                ${s.percentual ? `<span style="color:var(--text-light);margin-left:8px;">${s.percentual}%</span>` : ''}
+                ${badges.length ? '<span style="margin-left:8px;">' + badges.join(' ') + '</span>' : ''}
+            </div>
+            <span class="socio-toggle" id="socio-toggle-${i}" style="font-size:0.8rem;color:var(--text-light);">▶</span>
+        </div>
+        <div class="socio-detalhe" id="socio-detalhe-${i}" style="display:none;padding:8px 0 12px 12px;border-top:1px solid var(--border);font-size:0.82rem;">
+            ${s.cpf ? `<div class="info-row"><span class="info-label">CPF</span><span class="info-value">${s.cpf}</span></div>` : ''}
+            ${s.nacionalidade ? `<div class="info-row"><span class="info-label">Nacionalidade</span><span class="info-value">${s.nacionalidade}</span></div>` : ''}
+            ${s.profissao ? `<div class="info-row"><span class="info-label">Profissão</span><span class="info-value">${s.profissao}</span></div>` : ''}
+            ${s.estadoCivil ? `<div class="info-row"><span class="info-label">Estado Civil</span><span class="info-value">${ESTADOS_CIVIS[s.estadoCivil] || s.estadoCivil}</span></div>` : ''}
+            ${s.regimeCasamento ? `<div class="info-row"><span class="info-label">Regime de Casamento</span><span class="info-value">${REGIMES_CASAMENTO[s.regimeCasamento] || s.regimeCasamento}</span></div>` : ''}
+            ${s.endereco ? `<div class="info-row"><span class="info-label">Endereço</span><span class="info-value">${s.endereco}</span></div>` : ''}
+            ${s.percentual && s._capital ? `<div class="info-row"><span class="info-label">Valor da Participação</span><span class="info-value" style="font-weight:700;">R$ ${(s.percentual * s._capital / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>` : ''}
+        </div>
+    </div>`;
+}
+
+function toggleSocioDetalhe(i) {
+    const detalhe = document.getElementById('socio-detalhe-' + i);
+    const toggle = document.getElementById('socio-toggle-' + i);
+    if (!detalhe) return;
+    const visivel = detalhe.style.display !== 'none';
+    detalhe.style.display = visivel ? 'none' : 'block';
+    toggle.textContent = visivel ? '▶' : '▼';
+}
+
+let _sociosTodosExpandidos = false;
+function toggleTodosSocios() {
+    _sociosTodosExpandidos = !_sociosTodosExpandidos;
+    document.querySelectorAll('.socio-detalhe').forEach(el => {
+        el.style.display = _sociosTodosExpandidos ? 'block' : 'none';
+    });
+    document.querySelectorAll('.socio-toggle').forEach(el => {
+        el.textContent = _sociosTodosExpandidos ? '▼' : '▶';
+    });
+    document.getElementById('btn-toggle-socios').textContent = _sociosTodosExpandidos ? '▲ Recolher todos' : '▼ Expandir todos';
+}
+
+function filtrarSociosModal() {
+    const busca = (document.getElementById('filtro-socios-modal')?.value || '').toLowerCase().trim();
+    document.querySelectorAll('#lista-socios-modal .socio-card').forEach(card => {
+        const nome = card.dataset.nome || '';
+        card.style.display = (!busca || nome.includes(busca)) ? '' : 'none';
+    });
 }
 
 // ===== RENDERIZAÇÃO DO PAINEL =====
@@ -1076,10 +1168,69 @@ function calcularStatusGeral(processo) {
 }
 
 // ===== UTILITÁRIOS =====
+function copiarTexto(texto) {
+    // Fallback com textarea (funciona em mais contextos que clipboard API)
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        showToast('Copiado! 📋');
+    } catch (e) {
+        showToast('Erro ao copiar');
+    }
+    document.body.removeChild(ta);
+}
+
 function copiarLink(inputId) {
     const input = document.getElementById(inputId);
-    input.select();
-    navigator.clipboard.writeText(input.value).then(() => showToast('Link copiado! 📋'));
+    copiarTexto(input.value);
+}
+
+// ===== VALIDAÇÃO DE CPF =====
+function validarCPF(cpf) {
+    cpf = (cpf || '').replace(/\D/g, '');
+    if (cpf.length !== 11) return false;
+    if (/^(\d)\1{10}$/.test(cpf)) return false;
+
+    let soma = 0;
+    for (let i = 0; i < 9; i++) soma += parseInt(cpf.charAt(i)) * (10 - i);
+    let resto = (soma * 10) % 11;
+    if (resto === 10) resto = 0;
+    if (resto !== parseInt(cpf.charAt(9))) return false;
+
+    soma = 0;
+    for (let i = 0; i < 10; i++) soma += parseInt(cpf.charAt(i)) * (11 - i);
+    resto = (soma * 10) % 11;
+    if (resto === 10) resto = 0;
+    return resto === parseInt(cpf.charAt(10));
+}
+
+function formatarCPF(valor) {
+    valor = (valor || '').replace(/\D/g, '').slice(0, 11);
+    if (valor.length > 9) return valor.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4');
+    if (valor.length > 6) return valor.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
+    if (valor.length > 3) return valor.replace(/(\d{3})(\d{1,3})/, '$1.$2');
+    return valor;
+}
+
+function aplicarMascaraCPF(input) {
+    input.value = formatarCPF(input.value);
+    const cpf = input.value.replace(/\D/g, '');
+    if (cpf.length === 11) {
+        if (validarCPF(cpf)) {
+            input.style.borderColor = '#28a745';
+            input.title = 'CPF válido ✓';
+        } else {
+            input.style.borderColor = '#dc3545';
+            input.title = 'CPF inválido ✗';
+        }
+    } else {
+        input.style.borderColor = '';
+        input.title = '';
+    }
 }
 
 async function gerarNovoLinkForm() {
@@ -1135,13 +1286,8 @@ function enviarLinksWhatsApp() {
         `📝 *Preencher dados:* ${links.form}\n` +
         `📊 *Acompanhar status:* ${links.status}`;
 
-    // Copia pro clipboard — funcionário cola no WhatsApp que já tá aberto
-    navigator.clipboard.writeText(msg).then(() => {
-        showToast('Mensagem copiada! Cole no WhatsApp ✅');
-    }).catch(() => {
-        // Fallback: abre wa.me se clipboard falhar
-        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-    });
+    copiarTexto(msg);
+    showToast('Mensagem copiada! Cole no WhatsApp ✅');
 }
 
 function aplicarFiltro() {
