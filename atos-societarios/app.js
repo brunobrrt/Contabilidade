@@ -7,8 +7,9 @@
 let processos = [];
 let processoAtual = null; // processo sendo visualizado/editado
 let sociosFormCount = 0;
-let arquivosUpload = { iptu: [], docs: [] };
+let arquivosUpload = { iptu: [], docs: [] }; // { iptu: [{file, name, id}], docs: [{file, name, id}] }
 let db = null; // Firestore instance
+let storage = null; // Firebase Storage instance
 let unsubscribePainel = null; // listener em tempo real
 
 // ===== CONFIGURAÇÕES =====
@@ -78,6 +79,7 @@ async function inicializarFirebase() {
             firebase.initializeApp(firebaseConfig);
         }
         db = firebase.firestore();
+        storage = firebase.storage();
         console.log('Firebase conectado ✓');
     } catch (e) {
         console.error('Erro ao inicializar Firebase:', e);
@@ -515,6 +517,8 @@ async function carregarFormulario(codigo) {
 
     // Sócio inicial
     sociosFormCount = 0;
+    arquivosUpload = { iptu: [], docs: [] }; // reset arquivos pendentes
+
     if (tipo !== 'encerramento' && (!processo.socios || processo.socios.length === 0)) {
         adicionarSocioForm();
     } else if (processo.socios && processo.socios.length > 0) {
@@ -782,15 +786,65 @@ function recalcularParticipacoes() {
 function handleUpload(input, containerId) {
     const container = document.getElementById(containerId);
     const files = Array.from(input.files);
+
+    // Determinar tipo de arquivo pelo containerId
+    const tipo = containerId.includes('iptu') ? 'iptu' : 'docs';
+
     files.forEach(file => {
         const fileId = Date.now() + Math.random().toString(36).substr(2, 5);
+
+        // Guardar o File object para upload depois
+        arquivosUpload[tipo].push({ file, name: file.name, id: fileId });
+
+        // Preview
         const el = document.createElement('div');
         el.className = 'uploaded-file';
         el.id = 'file-' + fileId;
-        el.innerHTML = `<span class="uploaded-file-name">📄 ${file.name}</span><button class="btn-remove-file" onclick="this.parentElement.remove()">×</button>`;
+
+        // Se for imagem, mostrar miniatura
+        if (file.type.startsWith('image/')) {
+            const url = URL.createObjectURL(file);
+            el.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <img src="${url}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+                    <span class="uploaded-file-name">🖼️ ${file.name}</span>
+                </div>
+                <button class="btn-remove-file" onclick="removerArquivo('${tipo}','${fileId}')">×</button>`;
+        } else {
+            el.innerHTML = `<span class="uploaded-file-name">📄 ${file.name}</span><button class="btn-remove-file" onclick="removerArquivo('${tipo}','${fileId}')">×</button>`;
+        }
         container.appendChild(el);
     });
     input.value = '';
+}
+
+function removerArquivo(tipo, fileId) {
+    arquivosUpload[tipo] = arquivosUpload[tipo].filter(a => a.id !== fileId);
+    const el = document.getElementById('file-' + fileId);
+    if (el) el.remove();
+}
+
+// Upload de arquivos para Firebase Storage e retorna as URLs
+async function uploadArquivosParaStorage(processoId) {
+    if (!storage) return { iptu: [], docs: [] };
+
+    const resultado = { iptu: [], docs: [] };
+
+    for (const tipo of ['iptu', 'docs']) {
+        for (const item of arquivosUpload[tipo]) {
+            try {
+                const path = `atos-societarios/${processoId}/${tipo}/${item.id}_${item.name}`;
+                const ref = storage.ref().child(path);
+                await ref.put(item.file);
+                const url = await ref.getDownloadURL();
+                resultado[tipo].push({ name: item.name, url: url });
+            } catch (e) {
+                console.error(`Erro ao fazer upload de ${item.name}:`, e);
+            }
+        }
+    }
+
+    return resultado;
 }
 
 function handleUploadCliente(input) {
@@ -807,6 +861,11 @@ async function salvarFormularioCliente() {
         showToast('Preencha a razão social');
         return;
     }
+
+    showToast('Salvando dados...');
+
+    // Upload de arquivos para Firebase Storage
+    const arquivosUrls = await uploadArquivosParaStorage(processoAtual.id);
 
     // Coletar sócios
     const socios = [];
@@ -852,6 +911,17 @@ async function salvarFormularioCliente() {
         formLinkUsadoEm: agora
     };
 
+    // Adicionar URLs dos arquivos se houver uploads
+    if (arquivosUrls.iptu.length > 0 || arquivosUrls.docs.length > 0) {
+        // Merge com arquivos existentes
+        const iptuExistente = processoAtual.arquivos?.iptu || [];
+        const docsExistente = processoAtual.arquivos?.docs || [];
+        atualizacoes.arquivos = {
+            iptu: [...iptuExistente, ...arquivosUrls.iptu],
+            docs: [...docsExistente, ...arquivosUrls.docs]
+        };
+    }
+
     // Avançar etapa de solicitação se ainda em andamento
     if (processoAtual.etapas?.solicitacao?.status === 'em-andamento') {
         const novasEtapas = { ...processoAtual.etapas };
@@ -867,6 +937,9 @@ async function salvarFormularioCliente() {
         showToast('Erro ao salvar. Tente novamente.');
         return;
     }
+
+    // Limpar arquivos pendentes
+    arquivosUpload = { iptu: [], docs: [] };
 
     // Mostrar mensagem de sucesso e link de acompanhamento
     document.getElementById('form-links-salvos').style.display = 'block';
@@ -1009,6 +1082,38 @@ function renderizarInfoProcesso(processo, containerId) {
     }
 
     if (!html) html = '<p style="color:var(--text-light);">⏳ Aguardando preenchimento do cliente...</p>';
+
+    // Arquivos enviados (IPTU + Documentos)
+    const arquivos = processo.arquivos || {};
+    const iptuFiles = arquivos.iptu || [];
+    const docsFiles = arquivos.docs || [];
+
+    if (iptuFiles.length > 0 || docsFiles.length > 0) {
+        html += `<div class="info-section" style="margin-top:16px;">
+            <h4 style="font-size:0.78rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">📎 Documentos Enviados</h4>`;
+
+        // IPTU
+        if (iptuFiles.length > 0) {
+            html += `<div style="margin-bottom:12px;">
+                <div style="font-size:0.78rem;font-weight:600;color:var(--text-mid);margin-bottom:6px;">🏠 Comprovante de IPTU (${iptuFiles.length})</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${iptuFiles.map(f => montarMiniaturaArquivo(f)).join('')}
+                </div>
+            </div>`;
+        }
+
+        // Documentos
+        if (docsFiles.length > 0) {
+            html += `<div>
+                <div style="font-size:0.78rem;font-weight:600;color:var(--text-mid);margin-bottom:6px;">📄 Documentos Pessoais (${docsFiles.length})</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${docsFiles.map(f => montarMiniaturaArquivo(f)).join('')}
+                </div>
+            </div>`;
+        }
+
+        html += `</div>`;
+    }
 
     container.innerHTML = html;
 }
@@ -1165,6 +1270,26 @@ function calcularStatusGeral(processo) {
 }
 
 // ===== UTILITÁRIOS =====
+
+function montarMiniaturaArquivo(arquivo) {
+    const isImagem = /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(arquivo.name || arquivo.url);
+    const nome = arquivo.name || 'Arquivo';
+
+    if (isImagem) {
+        return `<a href="${arquivo.url}" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none;">
+            <div style="width:90px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--border);cursor:pointer;position:relative;" title="${nome}">
+                <img src="${arquivo.url}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">
+                <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:0.6rem;padding:2px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nome}</div>
+            </div>
+        </a>`;
+    }
+
+    // PDF ou outro arquivo
+    return `<a href="${arquivo.url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--bg-section);border:1.5px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.78rem;cursor:pointer;" title="${nome}">
+        <span style="font-size:1.2rem;">📄</span>
+        <span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nome}</span>
+    </a>`;
+}
 async function copiarTexto(texto) {
     // Método 1: Clipboard API moderna
     if (navigator.clipboard && navigator.clipboard.writeText) {
