@@ -669,19 +669,16 @@ function montarFormularioHTML(processo) {
         </div>`;
     }
 
-    // Info pós-abertura
-    if (tipo === 'abertura') {
-        html += `
-        <div class="modal-section" style="margin-top:20px;">
-            <h3>📌 Após a Abertura</h3>
-            <div class="aviso-publico" style="background:#d1ecf1;border-color:#0c5460;color:#0c5460;">
-                Após a conclusão, você precisará:<br>
-                • Acessar o <strong>Portal da JUCESP</strong> com sua senha Gov.br<br>
-                • Assinar os documentos online<br>
-                • Adquirir <strong>Certificado Digital A1</strong> (obrigatório)
-            </div>
-        </div>`;
-    }
+    // Informativo importante
+    html += `
+    <div class="modal-section" style="margin-top:20px;">
+        <h3>📌 Informações Importantes</h3>
+        <div class="aviso-publico" style="background:#fff3cd;border-color:#856404;color:#856404;">
+            • Este link de preenchimento funciona <strong>apenas uma vez</strong>. Após salvar, ele será invalidado.<br>
+            • Caso precise alterar alguma informação após o envio, entre em <strong>contato direto com o escritório</strong>.<br>
+            • Para acompanhar o andamento do seu processo, utilize o <strong>link de visualização</strong> que foi enviado junto com este link.
+        </div>
+    </div>`;
 
     // Botão salvar embaixo também
     html += `<div style="display:flex;justify-content:flex-end;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
