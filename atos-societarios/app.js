@@ -15,10 +15,10 @@ let unsubscribePainel = null; // listener em tempo real
 const ETAPAS_POR_TIPO = {
     abertura: [
         { id: 'solicitacao', label: 'Solicitação' },
-        { id: 'rede-sim', label: 'Rede Sim' },
-        { id: 'dbe', label: 'DBE' },
-        { id: 'clicksign', label: 'ClickSign' },
-        { id: 'jucesp', label: 'JUCESP' },
+        { id: 'rede-sim', label: 'Rede Sim', link: 'https://www.redesim.gov.br/' },
+        { id: 'dbe', label: 'DBE', link: 'https://www8.receita.fazenda.gov.br/SimplesNacional/' },
+        { id: 'clicksign', label: 'ClickSign', link: 'https://app.clicksign.com/' },
+        { id: 'jucesp', label: 'JUCESP', link: 'https://www.jucesponline.sp.gov.br/' },
         { id: 'exigencia', label: 'Exigência' },
         { id: 'inscricoes', label: 'Inscrições' },
         { id: 'concluido', label: 'Concluído' }
@@ -26,8 +26,8 @@ const ETAPAS_POR_TIPO = {
     alteracao: [
         { id: 'solicitacao', label: 'Solicitação' },
         { id: 'formulario', label: 'Formulário' },
-        { id: 'clicksign', label: 'ClickSign' },
-        { id: 'jucesp', label: 'JUCESP' },
+        { id: 'clicksign', label: 'ClickSign', link: 'https://app.clicksign.com/' },
+        { id: 'jucesp', label: 'JUCESP', link: 'https://www.jucesponline.sp.gov.br/' },
         { id: 'exigencia', label: 'Exigência' },
         { id: 'concluido', label: 'Concluído' }
     ],
@@ -288,16 +288,10 @@ function renderizarPainel() {
     renderizarLista('abertura', 'lista-aberturas');
     renderizarLista('alteracao', 'lista-alteracoes');
     renderizarLista('encerramento', 'lista-encerramentos');
-    popularFiltroClientes();
 }
 
-function popularFiltroClientes() {
-    const select = document.getElementById('filtro-cliente');
-    const clientes = [...new Set(processos.map(p => p.clienteNome).filter(Boolean))];
-    select.innerHTML = '<option value="todos">Todos os Clientes</option>';
-    clientes.forEach(nome => {
-        select.innerHTML += `<option value="${nome}">${nome}</option>`;
-    });
+function aplicarFiltro() {
+    renderizarPainel();
 }
 
 // Modal: Novo Processo
@@ -443,6 +437,15 @@ function fecharModalDetalhe() {
 async function avancarEtapa(processoId, etapaId, novoStatus) {
     const processo = processos.find(p => p.id === processoId);
     if (!processo) return;
+
+    // Se está iniciando a etapa e tem link oficial, abrir
+    if (novoStatus === 'em-andamento') {
+        const etapasConfig = ETAPAS_POR_TIPO[processo.tipo] || [];
+        const etapaConfig = etapasConfig.find(e => e.id === etapaId);
+        if (etapaConfig?.link) {
+            window.open(etapaConfig.link, '_blank');
+        }
+    }
 
     processo.etapas[etapaId].status = novoStatus;
     processo.etapas[etapaId].data = new Date().toISOString();
@@ -978,10 +981,23 @@ function renderizarInfoProcesso(processo, containerId) {
 
 // ===== RENDERIZAÇÃO DO PAINEL =====
 function renderizarDashboard() {
-    const aberturas = processos.filter(p => p.tipo === 'abertura').length;
-    const alteracoes = processos.filter(p => p.tipo === 'alteracao').length;
-    const encerramentos = processos.filter(p => p.tipo === 'encerramento').length;
-    const pendentes = processos.filter(p => p.status === 'pendente').length;
+    const busca = (document.getElementById('filtro-cliente')?.value || '').toLowerCase().trim();
+    let processosFiltrados = processos;
+
+    // Filtro por texto digitado
+    if (busca) {
+        processosFiltrados = processos.filter(p => {
+            const nome = (p.clienteNome || '').toLowerCase();
+            const razao = (p.dados?.razaoSocial || '').toLowerCase();
+            const razao2 = (p.dados?.razaoSocial2 || '').toLowerCase();
+            return nome.includes(busca) || razao.includes(busca) || razao2.includes(busca);
+        });
+    }
+
+    const aberturas = processosFiltrados.filter(p => p.tipo === 'abertura').length;
+    const alteracoes = processosFiltrados.filter(p => p.tipo === 'alteracao').length;
+    const encerramentos = processosFiltrados.filter(p => p.tipo === 'encerramento').length;
+    const pendentes = processosFiltrados.filter(p => p.status === 'pendente').length;
 
     document.getElementById('dash-aberturas').textContent = aberturas;
     document.getElementById('dash-alteracoes').textContent = alteracoes;
@@ -989,23 +1005,34 @@ function renderizarDashboard() {
     document.getElementById('dash-pendentes').textContent = pendentes;
 
     const recentes = document.getElementById('processos-recentes');
-    if (processos.length === 0) {
-        recentes.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>Nenhum processo cadastrado</p><p class="empty-hint">Clique em "Novo Processo" para começar</p></div>`;
+    if (processosFiltrados.length === 0) {
+        recentes.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span><p>${busca ? 'Nenhum resultado para "' + busca + '"' : 'Nenhum processo cadastrado'}</p>${!busca ? '<p class="empty-hint">Clique em "Novo Processo" para começar</p>' : ''}</div>`;
         return;
     }
 
-    const sorted = [...processos].sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    const sorted = [...processosFiltrados].sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
     recentes.innerHTML = sorted.slice(0, 5).map(p => criarCardProcesso(p)).join('');
 }
 
 function renderizarLista(tipo, containerId) {
     const container = document.getElementById(containerId);
-    const lista = processos.filter(p => p.tipo === tipo);
+    const busca = (document.getElementById('filtro-cliente')?.value || '').toLowerCase().trim();
+    let lista = processos.filter(p => p.tipo === tipo);
+
+    // Filtro por texto digitado
+    if (busca) {
+        lista = lista.filter(p => {
+            const nome = (p.clienteNome || '').toLowerCase();
+            const razao = (p.dados?.razaoSocial || '').toLowerCase();
+            const razao2 = (p.dados?.razaoSocial2 || '').toLowerCase();
+            return nome.includes(busca) || razao.includes(busca) || razao2.includes(busca);
+        });
+    }
 
     if (lista.length === 0) {
         const icons = { abertura: '🏢', alteracao: '✏️', encerramento: '❌' };
         const labels = { abertura: 'abertura', alteracao: 'alteração', encerramento: 'encerramento' };
-        container.innerHTML = `<div class="empty-state"><span class="empty-icon">${icons[tipo]}</span><p>Nenhum ${labels[tipo]} cadastrado</p></div>`;
+        container.innerHTML = `<div class="empty-state"><span class="empty-icon">${icons[tipo]}</span><p>${busca ? 'Nenhum resultado para "' + busca + '"' : 'Nenhum ' + labels[tipo] + ' cadastrado'}</p></div>`;
         return;
     }
 
@@ -1108,7 +1135,8 @@ function enviarLinksWhatsApp() {
         `📝 *Preencher dados:* ${links.form}\n` +
         `📊 *Acompanhar status:* ${links.status}`;
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    // Reutiliza a mesma aba do WhatsApp em vez de abrir nova toda vez
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, 'whatsapp-share');
 }
 
 function aplicarFiltro() {
