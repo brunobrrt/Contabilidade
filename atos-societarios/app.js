@@ -1135,8 +1135,13 @@ function enviarLinksWhatsApp() {
         `📝 *Preencher dados:* ${links.form}\n` +
         `📊 *Acompanhar status:* ${links.status}`;
 
-    // Reutiliza a mesma aba do WhatsApp em vez de abrir nova toda vez
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, 'whatsapp-share');
+    // Copia pro clipboard — funcionário cola no WhatsApp que já tá aberto
+    navigator.clipboard.writeText(msg).then(() => {
+        showToast('Mensagem copiada! Cole no WhatsApp ✅');
+    }).catch(() => {
+        // Fallback: abre wa.me se clipboard falhar
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    });
 }
 
 function aplicarFiltro() {
