@@ -1297,15 +1297,25 @@ async function gerarNovoLinkForm() {
 }
 
 function enviarLinksWhatsApp() {
-    const links = window._linksParaEnviar || window._linksParaEnviarDetalhe;
-    if (!links) return;
+    // Pega os links direto dos inputs (mesma lógica dos botões Copiar que funcionam)
+    const linkForm = document.getElementById('detalhe-link-form')?.value
+        || document.getElementById('link-gerado-form')?.value
+        || '';
+    const linkStatus = document.getElementById('detalhe-link-status')?.value
+        || document.getElementById('link-gerado-status')?.value
+        || '';
+    const cliente = window._linksParaEnviar?.cliente
+        || window._linksParaEnviarDetalhe?.cliente
+        || '';
+    const tipo = window._linksParaEnviar?.tipo
+        || window._linksParaEnviarDetalhe?.tipo
+        || 'ato societário';
 
-    const msg = `Olá! Seu processo de ${links.tipo || 'ato societário'} foi criado.\n\n` +
-        `📝 *Preencher dados:* ${links.form}\n` +
-        `📊 *Acompanhar status:* ${links.status}`;
+    const msg = `Olá${cliente ? ' ' + cliente : ''}! Seu processo de ${tipo} foi criado.\n\n` +
+        `📝 *Preencher dados:* ${linkForm}\n` +
+        `📊 *Acompanhar status:* ${linkStatus}`;
 
     copiarTexto(msg);
-    showToast('Mensagem copiada! Cole no WhatsApp ✅');
 }
 
 function aplicarFiltro() {
