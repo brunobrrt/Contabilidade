@@ -1168,20 +1168,38 @@ function calcularStatusGeral(processo) {
 }
 
 // ===== UTILITÁRIOS =====
-function copiarTexto(texto) {
-    // Fallback com textarea (funciona em mais contextos que clipboard API)
-    const ta = document.createElement('textarea');
-    ta.value = texto;
-    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-        document.execCommand('copy');
-        showToast('Copiado! 📋');
-    } catch (e) {
-        showToast('Erro ao copiar');
+async function copiarTexto(texto) {
+    // Método 1: Clipboard API moderna
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(texto);
+            showToast('Copiado! 📋');
+            return;
+        } catch (e) { /* continua pro fallback */ }
     }
-    document.body.removeChild(ta);
+
+    // Método 2: textarea focado + select
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = texto;
+        ta.contentEditable = true;
+        ta.readOnly = false;
+        ta.style.cssText = 'position:fixed;top:10px;left:10px;z-index:99999;width:1px;height:1px;padding:0;border:none;outline:none;opacity:0;';
+        document.body.appendChild(ta);
+        ta.focus({ preventScroll: true });
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) {
+            showToast('Copiado! 📋');
+            return;
+        }
+    } catch (e) { /* continua pro fallback */ }
+
+    // Método 3: mostra o texto e pede pra copiar manualmente
+    showToast('Copie manualmente (Ctrl+C)');
+    prompt('Copie o texto abaixo:', texto);
 }
 
 function copiarLink(inputId) {
