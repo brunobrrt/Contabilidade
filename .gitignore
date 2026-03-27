@@ -4,6 +4,9 @@
 # Node
 node_modules/
 
+# Service Account (NUNCA versionar — dá acesso total ao Firebase)
+service-account.json
+
 # Debug logs
 firebase-debug.log
 
