@@ -26,21 +26,25 @@ function inicializarSistema() {
     carregarTodosOsSocios();
     carregarMesesDestravados();
     
-    // Criar usuário admin padrão se não existir
+    // Criar usuário admin padrão se não existir (local E Firebase)
     if (todosOsSocios.length === 0) {
-        // Migrar: criar com hash da senha
-        T7Crypto.hashPassword('admin123').then(hash => {
-            const admin = {
-                id: Date.now(),
-                nome: 'Administrador',
-                cpf: '00000000000',
-                senhaHash: hash,
-                role: 'gerencia'
-            };
-            todosOsSocios.push(admin);
-            salvarTodosOsSocios();
-            console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
-        });
+        // Verificar se Firebase já tem dados antes de criar admin local
+        if (db) {
+            db.collection('sistema').doc('usuarios').get().then(doc => {
+                if (doc.exists && doc.data().lista && doc.data().lista.length > 0) {
+                    // Firebase já tem usuários — carregar de lá
+                    carregarTodosOsSocios();
+                    return;
+                }
+                // Firebase vazio — criar admin local
+                criarAdminPadrao();
+            }).catch(() => {
+                // Firebase indisponível — criar admin local
+                criarAdminPadrao();
+            });
+        } else {
+            criarAdminPadrao();
+        }
     } else {
         // Migrar senhas plaintext para hash (executa uma vez)
         let migrado = false;
@@ -56,6 +60,21 @@ function inicializarSistema() {
         });
         if (migrado) console.log('Senhas migradas para hash SHA-256');
     }
+}
+
+function criarAdminPadrao() {
+    T7Crypto.hashPassword('admin123').then(hash => {
+        const admin = {
+            id: Date.now(),
+            nome: 'Administrador',
+            cpf: '00000000000',
+            senhaHash: hash,
+            role: 'gerencia'
+        };
+        todosOsSocios.push(admin);
+        salvarTodosOsSocios();
+        console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
+    });
 }
 
 // ===== FIREBASE =====
