@@ -6,6 +6,7 @@ node_modules/
 
 # Service Account (NUNCA versionar — dá acesso total ao Firebase)
 service-account.json
+*firebase-adminsdk*.json
 
 # Debug logs
 firebase-debug.log
