@@ -13,14 +13,23 @@
  */
 
 const admin = require('firebase-admin');
+const path = require('path');
+const fs = require('fs');
 
-// Inicializar Firebase Admin
-try {
+// Tentar carregar service account do diretório do projeto
+const credPath = path.join(__dirname, 'service-account.json');
+
+if (fs.existsSync(credPath)) {
+    const serviceAccount = require(credPath);
     admin.initializeApp({
-        projectId: 'contabilidade-b568c'
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id
     });
-} catch (e) {
-    // Já inicializado
+    console.log('🔑 Usando service-account.json\n');
+} else {
+    console.log('❌ Arquivo service-account.json não encontrado em:', credPath);
+    console.log('   Baixe em: Firebase Console → Configurações → Contas de serviço → Gerar nova chave privada');
+    process.exit(1);
 }
 
 const db = admin.firestore();
