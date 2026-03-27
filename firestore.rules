@@ -7,25 +7,32 @@ service cloud.firestore {
       return request.auth.token.email.split('@')[0];
     }
 
-    function isAdmin() {
-      return getCPF() == '00000000000';
+    // Gerência: acesso total. Adicione CPFs aqui para dar acesso gerencial.
+    // Para adicionar um novo gerente, basta incluir o CPF na lista e publicar as regras.
+    function isGerencia() {
+      return getCPF() in [
+        '00000000000'  // Admin
+        // Adicione outros CPFs de gerência aqui:
+        // '11111111111',
+        // '22222222222',
+      ];
     }
 
-    // Dados por usuário — cada cliente vê só os seus
+    // Dados por usuário — cliente vê só os seus, gerência vê tudo
     match /dados_usuario/{cpf} {
       allow read, write: if request.auth != null
-        && (getCPF() == cpf || isAdmin());
+        && (getCPF() == cpf || isGerencia());
     }
 
     // Sócios da empresa por usuário
     match /socios_empresa/{cpf} {
       allow read, write: if request.auth != null
-        && (getCPF() == cpf || isAdmin());
+        && (getCPF() == cpf || isGerencia());
     }
 
     // Configs do sistema — só gerência
     match /sistema/{doc} {
-      allow read, write: if request.auth != null && isAdmin();
+      allow read, write: if request.auth != null && isGerencia();
     }
 
     // Bloquear resto
