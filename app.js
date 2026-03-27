@@ -71,9 +71,15 @@ async function inicializarFirebase() {
             return;
         }
         firebase.initializeApp(window.firebaseConfig);
+
+        // Autenticação anônima — permite acesso ao Firestore sem login extra
+        const auth = firebase.auth();
+        await auth.signInAnonymously();
+        console.log('✅ Firebase Auth anônimo conectado!');
+
         db = firebase.firestore();
         await sincronizarDoFirebase();
-        console.log('✅ Firebase conectado!');
+        console.log('✅ Firestore conectado!');
     } catch (e) {
         console.warn('Firebase indisponível, usando dados locais:', e.message);
         db = null;

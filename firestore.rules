@@ -5,18 +5,16 @@ service cloud.firestore {
     // ============================================================
     // REGRAS DE SEGURANÇA — Sistema de Contabilidade T7
     //
-    // MODO DE PROTEÇÃO: Dados criptografados no cliente (AES-256-GCM)
-    // O Firebase armazena apenas ciphertext. Sem a chave de
-    // descriptografia (derivada da senha), os dados são inúteis.
-    //
-    // Estas regras bloqueiam acesso direto via REST API.
-    // O app usa Firebase SDK no browser com regras restritivas.
+    // Autenticação: Firebase Anonymous Auth (automático no app)
+    // Qualquer request autenticado (token válido) pode ler/escrever.
+    // Dados sensíveis são criptografados client-side (AES-256-GCM).
     // ============================================================
 
-    // Bloquear leitura/escrita direta de TODAS as coleções
-    // via REST API não-autenticada (proteção contra scraping por project ID)
     match /{document=**} {
-      allow read, write: if false;
+      // Permitir acesso apenas para requests autenticados
+      // (Anonymous Auth gera token válido automaticamente)
+      // Bloqueia acesso REST API direto SEM token
+      allow read, write: if request.auth != null;
     }
   }
 }
