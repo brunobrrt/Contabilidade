@@ -28,16 +28,33 @@ function inicializarSistema() {
     
     // Criar usuário admin padrão se não existir
     if (todosOsSocios.length === 0) {
-        const admin = {
-            id: Date.now(),
-            nome: 'Administrador',
-            cpf: '00000000000',
-            senha: 'admin123',
-            role: 'gerencia'
-        };
-        todosOsSocios.push(admin);
-        salvarTodosOsSocios();
-        console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
+        // Migrar: criar com hash da senha
+        T7Crypto.hashPassword('admin123').then(hash => {
+            const admin = {
+                id: Date.now(),
+                nome: 'Administrador',
+                cpf: '00000000000',
+                senhaHash: hash,
+                role: 'gerencia'
+            };
+            todosOsSocios.push(admin);
+            salvarTodosOsSocios();
+            console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
+        });
+    } else {
+        // Migrar senhas plaintext para hash (executa uma vez)
+        let migrado = false;
+        todosOsSocios.forEach(s => {
+            if (s.senha && !s.senhaHash) {
+                T7Crypto.hashPassword(s.senha).then(hash => {
+                    s.senhaHash = hash;
+                    delete s.senha;
+                    salvarTodosOsSocios();
+                });
+                migrado = true;
+            }
+        });
+        if (migrado) console.log('Senhas migradas para hash SHA-256');
     }
 }
 
@@ -68,47 +85,56 @@ async function sincronizarDoFirebase() {
     try {
         const usuariosDoc = await db.collection('sistema').doc('usuarios').get();
         if (usuariosDoc.exists) {
-            const lista = usuariosDoc.data().lista || [];
-            if (lista.length > 0) localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+            const raw = usuariosDoc.data();
+            const lista = raw.__encrypted ? await T7Crypto.decrypt(raw) : (raw.lista || []);
+            if (Array.isArray(lista) && lista.length > 0) localStorage.setItem('todosOsSocios', JSON.stringify(lista));
         }
         const dadosSnap = await db.collection('dados_usuario').get();
-        dadosSnap.forEach(d => {
-            localStorage.setItem(`dados_${d.id}`, JSON.stringify({
-                lucros: d.data().lucros || [],
-                rendimentos: d.data().rendimentos || []
+        dadosSnap.forEach(async d => {
+            const raw = d.data();
+            const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+            if (dados) localStorage.setItem(`dados_${d.id}`, JSON.stringify({
+                lucros: dados.lucros || [],
+                rendimentos: dados.rendimentos || []
             }));
         });
         const sociosSnap = await db.collection('socios_empresa').get();
-        sociosSnap.forEach(d => {
-            localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(d.data().lista || []));
+        sociosSnap.forEach(async d => {
+            const raw = d.data();
+            const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+            if (dados) localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(dados.lista || []));
         });
         // Sincronizar meses destravados
         const mesesDoc = await db.collection('sistema').doc('mesesDestravados').get();
         if (mesesDoc.exists) {
-            const lista = mesesDoc.data().lista || [];
-            localStorage.setItem('mesesDestravados', JSON.stringify(lista));
+            const raw = mesesDoc.data();
+            const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+            if (dados) localStorage.setItem('mesesDestravados', JSON.stringify(dados.lista || dados || []));
         }
     } catch (e) {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
     }
 }
 
-function syncFirebaseUsuarios() {
+async function syncFirebaseUsuarios() {
     if (!db) return;
-    db.collection('sistema').doc('usuarios').set({ lista: todosOsSocios }).catch(console.error);
+    const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
+    db.collection('sistema').doc('usuarios').set(encrypted).catch(console.error);
 }
 
-function syncFirebaseDados(cpf, dados) {
+async function syncFirebaseDados(cpf, dados) {
     if (!db) return;
-    db.collection('dados_usuario').doc(cpf).set(dados).catch(console.error);
+    const encrypted = await T7Crypto.encrypt(dados);
+    db.collection('dados_usuario').doc(cpf).set(encrypted).catch(console.error);
 }
 
-function syncFirebaseSociosEmpresa(cpf, lista) {
+async function syncFirebaseSociosEmpresa(cpf, lista) {
     if (!db) return;
-    db.collection('socios_empresa').doc(cpf).set({ lista }).catch(console.error);
+    const encrypted = await T7Crypto.encrypt({ lista });
+    db.collection('socios_empresa').doc(cpf).set(encrypted).catch(console.error);
 }
 
-function deleteFirebaseDados(cpf) {
+async function deleteFirebaseDados(cpf) {
     if (!db) return;
     db.collection('dados_usuario').doc(cpf).delete().catch(console.error);
 }
@@ -264,19 +290,43 @@ function fazerLogin() {
         return;
     }
     
-    if (socio.senha !== senha) {
-        alert('Senha incorreta!');
-        return;
-    }
-    
-    usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
-    localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
-    
-    // Limpar campos
-    document.getElementById('login-cpf').value = '';
-    document.getElementById('login-senha').value = '';
-    
-    mostrarSistema();
+    // Verificar senha (suporta hash e plaintext legado)
+    const senhaCorreta = async () => {
+        if (socio.senhaHash) {
+            // Senha já está hasheada
+            return await T7Crypto.verifyPassword(senha, socio.senhaHash);
+        } else if (socio.senha) {
+            // Legado: senha em plaintext — aceita e migra
+            if (socio.senha === senha) {
+                // Migrar para hash
+                socio.senhaHash = await T7Crypto.hashPassword(senha);
+                delete socio.senha;
+                salvarTodosOsSocios();
+                return true;
+            }
+            return false;
+        }
+        return false;
+    };
+
+    senhaCorreta.then(ok => {
+        if (!ok) {
+            alert('Senha incorreta!');
+            return;
+        }
+        
+        // Iniciar sessão criptográfica
+        T7Crypto.initSession(senha).then(() => {
+            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+            localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+            
+            // Limpar campos
+            document.getElementById('login-cpf').value = '';
+            document.getElementById('login-senha').value = '';
+            
+            mostrarSistema();
+        });
+    });
 }
 
 function fazerLogout() {
@@ -286,6 +336,7 @@ function fazerLogout() {
         lucrosData = [];
         rendimentosData = [];
         filtroAtual = 'todos';
+        T7Crypto.clearSession(); // Limpar chave de criptografia da memória
         mostrarLogin();
     }
 }
@@ -493,25 +544,27 @@ function criarUsuarioNoModalSocios() {
         return;
     }
 
-    const novoUsuario = {
-        id: Date.now(),
-        nome: nome,
-        cpf: cpf,
-        senha: senha,
-        role: role
-    };
+    T7Crypto.hashPassword(senha).then(senhaHash => {
+        const novoUsuario = {
+            id: Date.now(),
+            nome: nome,
+            cpf: cpf,
+            senhaHash: senhaHash,
+            role: role
+        };
 
-    todosOsSocios.push(novoUsuario);
-    salvarTodosOsSocios();
+        todosOsSocios.push(novoUsuario);
+        salvarTodosOsSocios();
 
-    document.getElementById('socios-nome').value = '';
-    document.getElementById('socios-cpf').value = '';
-    document.getElementById('socios-senha').value = '';
-    document.getElementById('socios-role').value = 'cliente';
+        document.getElementById('socios-nome').value = '';
+        document.getElementById('socios-cpf').value = '';
+        document.getElementById('socios-senha').value = '';
+        document.getElementById('socios-role').value = 'cliente';
 
-    renderSociosTable();
-    carregarFiltroSocios();
-    showSuccessMessage('Usuário criado com sucesso!');
+        renderSociosTable();
+        carregarFiltroSocios();
+        showSuccessMessage('Usuário criado com sucesso!');
+    });
 }
 
 function renderSociosTable() {
@@ -581,27 +634,29 @@ function criarNovoUsuario() {
         return;
     }
     
-    // Adicionar novo usuário
-    const novoUsuario = {
-        id: Date.now(),
-        nome: nome,
-        cpf: cpf,
-        senha: senha,
-        role: role
-    };
-    
-    todosOsSocios.push(novoUsuario);
-    salvarTodosOsSocios();
-    
-    // Limpar campos
-    document.getElementById('admin-nome').value = '';
-    document.getElementById('admin-cpf').value = '';
-    document.getElementById('admin-senha').value = '';
-    document.getElementById('admin-role').value = 'cliente';
-    
-    renderAdminUsersTable();
-    carregarFiltroSocios();
-    showSuccessMessage('Usuário criado com sucesso!');
+    // Adicionar novo usuário (com hash de senha)
+    T7Crypto.hashPassword(senha).then(senhaHash => {
+        const novoUsuario = {
+            id: Date.now(),
+            nome: nome,
+            cpf: cpf,
+            senhaHash: senhaHash,
+            role: role
+        };
+        
+        todosOsSocios.push(novoUsuario);
+        salvarTodosOsSocios();
+        
+        // Limpar campos
+        document.getElementById('admin-nome').value = '';
+        document.getElementById('admin-cpf').value = '';
+        document.getElementById('admin-senha').value = '';
+        document.getElementById('admin-role').value = 'cliente';
+        
+        renderAdminUsersTable();
+        carregarFiltroSocios();
+        showSuccessMessage('Usuário criado com sucesso!');
+    });
 }
 
 // ===== GERENCIAR MESES TRAVADOS =====
@@ -771,22 +826,33 @@ function salvarEdicaoUsuario() {
     todosOsSocios[idx].nome = novoNome;
     todosOsSocios[idx].cpf = novoCpf;
     todosOsSocios[idx].role = novoRole;
-    if (novaSenha) todosOsSocios[idx].senha = novaSenha;
 
-    salvarTodosOsSocios();
-    fecharModalEditarUsuario();
-    renderAdminUsersTable();
-    carregarFiltroSocios();
-    showSuccessMessage(`Usuário "${novoNome}" atualizado com sucesso!`);
+    const finalizar = () => {
+        salvarTodosOsSocios();
+        fecharModalEditarUsuario();
+        renderAdminUsersTable();
+        carregarFiltroSocios();
+        showSuccessMessage(`Usuário "${novoNome}" atualizado com sucesso!`);
+    };
+
+    if (novaSenha) {
+        T7Crypto.hashPassword(novaSenha).then(hash => {
+            todosOsSocios[idx].senhaHash = hash;
+            delete todosOsSocios[idx].senha; // Remover plaintext legado
+            finalizar();
+        });
+    } else {
+        finalizar();
+    }
 }
 
 // ===== FUNÇÕES DE FILTRO (GERÊNCIA) =====
 function carregarFiltroSocios() {
     const select = document.getElementById('filtro-socio');
-    select.innerHTML = '<option value="todos">Todos os Sócios</option>';
+    select.innerHTML = '<option value="todos">Todos os Clientes</option>';
     
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'cliente') { // Apenas sócios, não gerência
+        if (socio.role === 'cliente') { // Apenas clientes, não gerência
             const option = document.createElement('option');
             option.value = socio.cpf;
             option.textContent = `${socio.nome} (${formatarCPFExibicao(socio.cpf)})`;
