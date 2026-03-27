@@ -15,7 +15,11 @@ let mesesDestravados = [];
 // ===== INICIALIZAÇÃO =====
 window.addEventListener('DOMContentLoaded', async () => {
     mostrarCarregandoFirebase(true);
-    await inicializarFirebase();
+    try {
+        await inicializarFirebase();
+    } catch (e) {
+        console.warn('Erro na inicialização Firebase:', e.message);
+    }
     mostrarCarregandoFirebase(false);
     inicializarSistema();
     verificarLogin();
@@ -63,18 +67,31 @@ function inicializarSistema() {
 }
 
 function criarAdminPadrao() {
-    T7Crypto.hashPassword('admin123').then(hash => {
+    const criarComHash = async () => {
+        let senhaHash = null;
+        if (typeof T7Crypto !== 'undefined') {
+            try {
+                senhaHash = await T7Crypto.hashPassword('admin123');
+            } catch (e) {
+                console.warn('Hash não disponível:', e.message);
+            }
+        }
         const admin = {
             id: Date.now(),
             nome: 'Administrador',
             cpf: '00000000000',
-            senhaHash: hash,
+            senha: 'admin123', // fallback plaintext
             role: 'gerencia'
         };
+        if (senhaHash) {
+            admin.senhaHash = senhaHash;
+            delete admin.senha;
+        }
         todosOsSocios.push(admin);
         salvarTodosOsSocios();
         console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
-    });
+    };
+    criarComHash();
 }
 
 // ===== FIREBASE =====
@@ -91,10 +108,19 @@ async function inicializarFirebase() {
         }
         firebase.initializeApp(window.firebaseConfig);
 
-        // Autenticação anônima — permite acesso ao Firestore sem login extra
+        // Autenticação anônima com timeout de 8s
         const auth = firebase.auth();
-        await auth.signInAnonymously();
-        console.log('✅ Firebase Auth anônimo conectado!');
+        const authPromise = auth.signInAnonymously();
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout auth')), 8000));
+        
+        try {
+            await Promise.race([authPromise, timeout]);
+            console.log('✅ Firebase Auth anônimo conectado!');
+        } catch (authErr) {
+            console.warn('Anonymous Auth falhou:', authErr.message);
+            // Continuar mesmo sem auth — o app funciona via localStorage
+            return;
+        }
 
         db = firebase.firestore();
         await sincronizarDoFirebase();
@@ -300,58 +326,62 @@ function mostrarSistema() {
 }
 
 function fazerLogin() {
-    const cpf = document.getElementById('login-cpf').value.replace(/\D/g, '');
-    const senha = document.getElementById('login-senha').value;
-    
-    if (!cpf || !senha) {
-        alert('Por favor, preencha todos os campos!');
-        return;
-    }
-    
-    const socio = todosOsSocios.find(s => s.cpf === cpf);
-    
-    if (!socio) {
-        alert('CPF não encontrado!');
-        return;
-    }
-    
-    // Verificar senha (suporta hash e plaintext legado)
-    const senhaCorreta = async () => {
-        if (socio.senhaHash) {
-            // Senha já está hasheada
-            return await T7Crypto.verifyPassword(senha, socio.senhaHash);
-        } else if (socio.senha) {
-            // Legado: senha em plaintext — aceita e migra
-            if (socio.senha === senha) {
-                // Migrar para hash
-                socio.senhaHash = await T7Crypto.hashPassword(senha);
-                delete socio.senha;
-                salvarTodosOsSocios();
-                return true;
-            }
-            return false;
-        }
-        return false;
-    };
-
-    senhaCorreta.then(ok => {
-        if (!ok) {
-            alert('Senha incorreta!');
+    try {
+        const cpf = document.getElementById('login-cpf').value.replace(/\D/g, '');
+        const senha = document.getElementById('login-senha').value;
+        
+        if (!cpf || !senha) {
+            alert('Por favor, preencha todos os campos!');
             return;
         }
+
+        // Recarregar lista de usuários (pode ter sido atualizada pelo Firebase)
+        carregarTodosOsSocios();
         
-        // Iniciar sessão criptográfica
-        T7Crypto.initSession(senha).then(() => {
+        const socio = todosOsSocios.find(s => s.cpf === cpf);
+        
+        if (!socio) {
+            alert('CPF não encontrado!');
+            return;
+        }
+
+        const fazerLoginReal = async (senhaOk) => {
+            if (!senhaOk) {
+                alert('Senha incorreta!');
+                return;
+            }
+            
+            // Iniciar sessão criptográfica (se disponível)
+            if (typeof T7Crypto !== 'undefined') {
+                try {
+                    await T7Crypto.initSession(senha);
+                } catch (e) {
+                    console.warn('Crypto não disponível, continuando sem:', e.message);
+                }
+            }
+            
             usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
             localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
             
-            // Limpar campos
             document.getElementById('login-cpf').value = '';
             document.getElementById('login-senha').value = '';
             
             mostrarSistema();
-        });
-    });
+        };
+
+        // Verificar senha (hash, plaintext legado, ou fallback)
+        if (socio.senhaHash && typeof T7Crypto !== 'undefined') {
+            T7Crypto.verifyPassword(senha, socio.senhaHash).then(fazerLoginReal);
+        } else if (socio.senha) {
+            // Legado: senha em plaintext
+            fazerLoginReal(socio.senha === senha);
+        } else {
+            alert('Erro: dados de senha não encontrados para este usuário.');
+        }
+    } catch (e) {
+        console.error('Erro no login:', e);
+        alert('Erro ao fazer login: ' + e.message);
+    }
 }
 
 function fazerLogout() {
