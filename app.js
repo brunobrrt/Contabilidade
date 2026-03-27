@@ -231,7 +231,7 @@ function mostrarSistema() {
             document.getElementById('filtro-gerencia').style.display = 'block';
             carregarFiltroSocios();
         } else {
-            roleBadge.textContent = '👔 SÓCIO';
+            roleBadge.textContent = '👔 CLIENTE';
             roleBadge.className = 'role-badge socio';
             document.getElementById('btn-admin').style.display = 'none';
             document.getElementById('btn-ver-usuarios').style.display = 'none';
@@ -467,7 +467,7 @@ function fecharModalSocios() {
     document.getElementById('socios-nome').value = '';
     document.getElementById('socios-cpf').value = '';
     document.getElementById('socios-senha').value = '';
-    document.getElementById('socios-role').value = 'socio';
+    document.getElementById('socios-role').value = 'cliente';
 }
 
 function criarUsuarioNoModalSocios() {
@@ -507,7 +507,7 @@ function criarUsuarioNoModalSocios() {
     document.getElementById('socios-nome').value = '';
     document.getElementById('socios-cpf').value = '';
     document.getElementById('socios-senha').value = '';
-    document.getElementById('socios-role').value = 'socio';
+    document.getElementById('socios-role').value = 'cliente';
 
     renderSociosTable();
     carregarFiltroSocios();
@@ -520,7 +520,7 @@ function renderSociosTable() {
     
     todosOsSocios.forEach(socio => {
         const row = document.createElement('tr');
-        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Sócio';
+        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Cliente';
         const isYou = socio.cpf === usuarioLogado.cpf ? '<span style="color: #28a745;"> (Você)</span>' : '';
         
         row.innerHTML = `
@@ -551,7 +551,7 @@ function fecharPainelAdmin() {
     document.getElementById('admin-nome').value = '';
     document.getElementById('admin-cpf').value = '';
     document.getElementById('admin-senha').value = '';
-    document.getElementById('admin-role').value = 'socio';
+    document.getElementById('admin-role').value = 'cliente';
 }
 
 function criarNovoUsuario() {
@@ -597,7 +597,7 @@ function criarNovoUsuario() {
     document.getElementById('admin-nome').value = '';
     document.getElementById('admin-cpf').value = '';
     document.getElementById('admin-senha').value = '';
-    document.getElementById('admin-role').value = 'socio';
+    document.getElementById('admin-role').value = 'cliente';
     
     renderAdminUsersTable();
     carregarFiltroSocios();
@@ -672,7 +672,7 @@ function renderAdminUsersTable() {
     
     todosOsSocios.forEach(socio => {
         const row = document.createElement('tr');
-        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Sócio';
+        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Cliente';
         const isYou = socio.cpf === usuarioLogado.cpf;
         
         row.innerHTML = `
@@ -786,7 +786,7 @@ function carregarFiltroSocios() {
     select.innerHTML = '<option value="todos">Todos os Sócios</option>';
     
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'socio') { // Apenas sócios, não gerência
+        if (socio.role === 'cliente') { // Apenas sócios, não gerência
             const option = document.createElement('option');
             option.value = socio.cpf;
             option.textContent = `${socio.nome} (${formatarCPFExibicao(socio.cpf)})`;
@@ -833,7 +833,7 @@ function carregarTodosOsDados() {
     
     // Carregar dados de todos os sócios
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'socio') {
+        if (socio.role === 'cliente') {
             const chave = `dados_${socio.cpf}`;
             const dados = localStorage.getItem(chave);
             
@@ -879,7 +879,7 @@ function salvarDadosDoUsuario(cpfUsuario = null) {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     
     // Se for sócio, sempre salva nos próprios dados
-    if (userLogado.role === 'socio') {
+    if (userLogado.role === 'cliente') {
         const chave = `dados_${usuarioLogado.cpf}`;
         const dados = {
             lucros: lucrosData.map(({ proprietarioCpf, ...rest }) => rest),
@@ -962,7 +962,7 @@ function switchTab(tabName) {
 // ===== FUNÇÕES DE LUCROS =====
 function addLucroRow() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    const cpfProprietario = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+    const cpfProprietario = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para adicionar registros.');
@@ -1077,7 +1077,7 @@ function renderLucrosTable() {
         
         if (podeEditar) {
             // Carregar sócios da empresa para a conta em questão
-            const cpfConta = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+            const cpfConta = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
             const sociosDisponiveis = JSON.parse(localStorage.getItem(`socios_empresa_${cpfConta}`) || '[]');
             
             if (sociosDisponiveis.length > 0) {
@@ -1176,7 +1176,7 @@ function updateLucrosTotalFiltrado(dados) {
 // ===== FUNÇÕES DE RENDIMENTOS =====
 function addRendimentoRow() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    const cpfProprietario = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+    const cpfProprietario = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para adicionar registros.');
@@ -1656,7 +1656,7 @@ function exportarTodosOsDados() {
     let todosRendimentos = [];
 
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'socio') {
+        if (socio.role === 'cliente') {
             const dados = localStorage.getItem(`dados_${socio.cpf}`);
             if (dados) {
                 const parsed = JSON.parse(dados);
