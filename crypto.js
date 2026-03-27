@@ -11,15 +11,17 @@
 
 const T7Crypto = (() => {
     const SALT = 't7-contabilidade-2026-salt-v1'; // Fixo para derivar mesma chave
+    const SYSTEM_KEY = 't7-sistema-2026-chave-mestra'; // Chave fixa do sistema (não depende de senha)
     const ITERATIONS = 100000;
 
     let _cachedKey = null; // Chave AES em memória (só durante a sessão)
 
-    // ===== DERIVAR CHAVE AES-256 DA SENHA =====
-    async function deriveKey(password) {
+    // ===== DERIVAR CHAVE AES-256 DA CHAVE DO SISTEMA =====
+    // Usa chave fixa para que todos os usuários usem a mesma criptografia
+    async function deriveSystemKey() {
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
-            'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+            'raw', enc.encode(SYSTEM_KEY), 'PBKDF2', false, ['deriveKey']
         );
         return crypto.subtle.deriveKey(
             {
@@ -30,16 +32,16 @@ const T7Crypto = (() => {
             },
             keyMaterial,
             { name: 'AES-GCM', length: 256 },
-            false, // não exportável
+            false,
             ['encrypt', 'decrypt']
         );
     }
 
     // ===== INICIAR SESSÃO CRIPTOGRÁFICA =====
-    // Chamado após login bem-sucedido
+    // Usa chave fixa do sistema (todos os usuários compartilham)
     async function initSession(password) {
-        _cachedKey = await deriveKey(password);
-        console.log('🔐 Sessão criptográfica iniciada');
+        _cachedKey = await deriveSystemKey();
+        console.log('🔐 Sessão criptográfica iniciada (chave do sistema)');
     }
 
     // ===== LIMPAR SESSÃO =====
