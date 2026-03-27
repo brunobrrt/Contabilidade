@@ -17,7 +17,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Tentar carregar service account do diretório do projeto
-const credPath = path.join(__dirname, 'service-account.json');
+const credPath = path.join(__dirname, 'contabilidade-b568c-firebase-adminsdk-fbsvc-2914252186.json');
 
 if (fs.existsSync(credPath)) {
     const serviceAccount = require(credPath);
