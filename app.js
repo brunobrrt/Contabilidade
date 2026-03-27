@@ -107,60 +107,118 @@ async function inicializarFirebase() {
             return;
         }
         firebase.initializeApp(window.firebaseConfig);
-
-        // Autenticação anônima com timeout de 8s
-        const auth = firebase.auth();
-        const authPromise = auth.signInAnonymously();
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout auth')), 8000));
-        
-        try {
-            await Promise.race([authPromise, timeout]);
-            console.log('✅ Firebase Auth anônimo conectado!');
-        } catch (authErr) {
-            console.warn('Anonymous Auth falhou:', authErr.message);
-            // Continuar mesmo sem auth — o app funciona via localStorage
-            return;
-        }
-
         db = firebase.firestore();
-        await sincronizarDoFirebase();
-        console.log('✅ Firestore conectado!');
+        console.log('✅ Firebase inicializado!');
     } catch (e) {
         console.warn('Firebase indisponível, usando dados locais:', e.message);
         db = null;
     }
 }
 
+// Login no Firebase Auth com CPF (transparente pro usuário)
+// Cada CPF vira um email: cpf@t7system.local
+async function firebaseAuthComCPF(cpf, senha) {
+    if (!db) return false;
+    try {
+        const auth = firebase.auth();
+        const email = `${cpf}@t7system.local`;
+
+        try {
+            // Tentar logar (usuário já existe)
+            await auth.signInWithEmailAndPassword(email, senha);
+            console.log(`🔐 Firebase Auth: ${cpf} conectado`);
+            return true;
+        } catch (signInErr) {
+            if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
+                // Criar usuário no Firebase Auth
+                try {
+                    await auth.createUserWithEmailAndPassword(email, senha);
+                    console.log(`🔐 Firebase Auth: ${cpf} criado`);
+                    return true;
+                } catch (createErr) {
+                    console.warn('Erro ao criar auth:', createErr.message);
+                    return false;
+                }
+            }
+            console.warn('Erro no auth:', signInErr.message);
+            return false;
+        }
+    } catch (e) {
+        console.warn('Firebase Auth falhou:', e.message);
+        return false;
+    }
+}
+
 async function sincronizarDoFirebase() {
     if (!db) return;
+    
+    const auth = firebase.auth();
+    const user = auth.currentUser;
+    if (!user) {
+        console.warn('Sem autenticação Firebase — sync pulado');
+        return;
+    }
+
+    const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
+    const cpfAtual = usuarioLogado?.cpf;
+
     try {
+        // Carregar lista de usuários (apenas gerência ou para verificação)
         const usuariosDoc = await db.collection('sistema').doc('usuarios').get();
         if (usuariosDoc.exists) {
             const raw = usuariosDoc.data();
             const lista = raw.__encrypted ? await T7Crypto.decrypt(raw) : (raw.lista || []);
-            if (Array.isArray(lista) && lista.length > 0) localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+            if (Array.isArray(lista) && lista.length > 0) {
+                localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+                carregarTodosOsSocios();
+            }
         }
-        const dadosSnap = await db.collection('dados_usuario').get();
-        dadosSnap.forEach(async d => {
-            const raw = d.data();
-            const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-            if (dados) localStorage.setItem(`dados_${d.id}`, JSON.stringify({
-                lucros: dados.lucros || [],
-                rendimentos: dados.rendimentos || []
-            }));
-        });
-        const sociosSnap = await db.collection('socios_empresa').get();
-        sociosSnap.forEach(async d => {
-            const raw = d.data();
-            const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-            if (dados) localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(dados.lista || []));
-        });
-        // Sincronizar meses destravados
-        const mesesDoc = await db.collection('sistema').doc('mesesDestravados').get();
-        if (mesesDoc.exists) {
-            const raw = mesesDoc.data();
-            const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-            if (dados) localStorage.setItem('mesesDestravados', JSON.stringify(dados.lista || dados || []));
+
+        // Carregar dados do próprio usuário (ou todos se gerência)
+        if (isGerencia) {
+            // Gerência carrega dados de todos os clientes
+            const dadosSnap = await db.collection('dados_usuario').get();
+            dadosSnap.forEach(async d => {
+                const raw = d.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`dados_${d.id}`, JSON.stringify({
+                    lucros: dados.lucros || [],
+                    rendimentos: dados.rendimentos || []
+                }));
+            });
+            const sociosSnap = await db.collection('socios_empresa').get();
+            sociosSnap.forEach(async d => {
+                const raw = d.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(dados.lista || []));
+            });
+        } else if (cpfAtual) {
+            // Cliente carrega apenas próprios dados
+            const meuDoc = await db.collection('dados_usuario').doc(cpfAtual).get();
+            if (meuDoc.exists) {
+                const raw = meuDoc.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`dados_${cpfAtual}`, JSON.stringify({
+                    lucros: dados.lucros || [],
+                    rendimentos: dados.rendimentos || []
+                }));
+            }
+            const sociosDoc = await db.collection('socios_empresa').doc(cpfAtual).get();
+            if (sociosDoc.exists) {
+                const raw = sociosDoc.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`socios_empresa_${cpfAtual}`, JSON.stringify(dados.lista || []));
+            }
+        }
+
+        // Meses destravados (só gerência)
+        if (isGerencia) {
+            const mesesDoc = await db.collection('sistema').doc('mesesDestravados').get();
+            if (mesesDoc.exists) {
+                const raw = mesesDoc.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem('mesesDestravados', JSON.stringify(dados.lista || dados || []));
+            }
         }
     } catch (e) {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
@@ -358,6 +416,14 @@ function fazerLogin() {
                 } catch (e) {
                     console.warn('Crypto não disponível, continuando sem:', e.message);
                 }
+            }
+
+            // Login no Firebase Auth (transparente pro usuário)
+            await firebaseAuthComCPF(cpf, senha);
+
+            // Sincronizar dados do Firebase após login
+            if (db) {
+                await sincronizarDoFirebase();
             }
             
             usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };

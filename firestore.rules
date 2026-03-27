@@ -2,19 +2,35 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ============================================================
-    // REGRAS DE SEGURANÇA — Sistema de Contabilidade T7
-    //
-    // Autenticação: Firebase Anonymous Auth (automático no app)
-    // Qualquer request autenticado (token válido) pode ler/escrever.
-    // Dados sensíveis são criptografados client-side (AES-256-GCM).
-    // ============================================================
+    // Extrair CPF do email de auth (formato: cpf@t7system.local)
+    function getCPF() {
+      return request.auth.token.email.split('@')[0];
+    }
 
+    function isAdmin() {
+      return getCPF() == '00000000000';
+    }
+
+    // Dados por usuário — cada cliente vê só os seus
+    match /dados_usuario/{cpf} {
+      allow read, write: if request.auth != null
+        && (getCPF() == cpf || isAdmin());
+    }
+
+    // Sócios da empresa por usuário
+    match /socios_empresa/{cpf} {
+      allow read, write: if request.auth != null
+        && (getCPF() == cpf || isAdmin());
+    }
+
+    // Configs do sistema — só gerência
+    match /sistema/{doc} {
+      allow read, write: if request.auth != null && isAdmin();
+    }
+
+    // Bloquear resto
     match /{document=**} {
-      // Permitir acesso apenas para requests autenticados
-      // (Anonymous Auth gera token válido automaticamente)
-      // Bloqueia acesso REST API direto SEM token
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
