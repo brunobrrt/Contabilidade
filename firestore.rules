@@ -11,10 +11,8 @@ service cloud.firestore {
     // Para adicionar um novo gerente, basta incluir o CPF na lista e publicar as regras.
     function isGerencia() {
       return getCPF() in [
-        '00000000000'  // Admin
-        // Adicione outros CPFs de gerência aqui:
-        // '11111111111',
-        // '22222222222',
+        '00000000000',  // Admin
+        '26419709881'   // Micol Scarabeli Barreto
       ];
     }
 
