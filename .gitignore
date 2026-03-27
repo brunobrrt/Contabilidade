@@ -1,6 +1,9 @@
 # Firebase credentials (API key é público por design — segurança nas Firestore Rules)
 # firebase-config.js mantido no repo. Marcar como "won't fix" no GitGuardian.
 
+# Node
+node_modules/
+
 # Debug logs
 firebase-debug.log
 

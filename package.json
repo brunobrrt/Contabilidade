@@ -1,0 +1,24 @@
+{
+  "name": "contabilidade",
+  "version": "1.0.0",
+  "description": "Sistema web completo para gerenciamento de **Distribuição de Lucros aos Sócios** e **Rendimentos de Aplicação Financeira** com **controle de acesso baseado em roles** (Gerência e Sócio), sincronização em nuvem via **Firebase Firestore** e fallback para armazenamento local.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brunobrrt/Contabilidade.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/brunobrrt/Contabilidade/issues"
+  },
+  "homepage": "https://github.com/brunobrrt/Contabilidade#readme",
+  "dependencies": {
+    "firebase-admin": "^13.7.0"
+  }
+}

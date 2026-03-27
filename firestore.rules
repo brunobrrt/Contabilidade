@@ -2,18 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Extrair CPF do email de auth (formato: cpf@t7system.local)
     function getCPF() {
       return request.auth.token.email.split('@')[0];
     }
 
-    // Gerência: acesso total. Adicione CPFs aqui para dar acesso gerencial.
-    // Para adicionar um novo gerente, basta incluir o CPF na lista e publicar as regras.
     function isGerencia() {
-      return getCPF() in [
-        '00000000000',  // Admin
-        '26419709881'   // Micol Scarabeli Barreto
-      ];
+      return request.auth.token.role == 'gerencia';
     }
 
     // Dados por usuário — cliente vê só os seus, gerência vê tudo
