@@ -9,6 +9,8 @@ let db = null; // Firebase Firestore
 // Filtros de data por aba
 let filtroLucros  = { de: '', ate: '' };
 let filtroRendimentos = { mes: '', ano: '' };
+// Meses destravados pela gerência (lista de "YYYY-MM")
+let mesesDestravados = [];
 
 // ===== INICIALIZAÇÃO =====
 window.addEventListener('DOMContentLoaded', async () => {
@@ -22,6 +24,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ===== INICIALIZAÇÃO DO SISTEMA =====
 function inicializarSistema() {
     carregarTodosOsSocios();
+    carregarMesesDestravados();
     
     // Criar usuário admin padrão se não existir
     if (todosOsSocios.length === 0) {
@@ -79,6 +82,12 @@ async function sincronizarDoFirebase() {
         sociosSnap.forEach(d => {
             localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(d.data().lista || []));
         });
+        // Sincronizar meses destravados
+        const mesesDoc = await db.collection('sistema').doc('mesesDestravados').get();
+        if (mesesDoc.exists) {
+            const lista = mesesDoc.data().lista || [];
+            localStorage.setItem('mesesDestravados', JSON.stringify(lista));
+        }
     } catch (e) {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
     }
@@ -102,6 +111,76 @@ function syncFirebaseSociosEmpresa(cpf, lista) {
 function deleteFirebaseDados(cpf) {
     if (!db) return;
     db.collection('dados_usuario').doc(cpf).delete().catch(console.error);
+}
+
+// ===== TRAVAMENTO MENSAL =====
+// Cada mês pode ser editado apenas durante o próprio mês.
+// Ex: registros de março → editáveis em março, travam dia 1º de abril.
+// Gerência pode destravar meses específicos pelo painel admin.
+
+function getMesAtual() {
+    const agora = new Date();
+    return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function carregarMesesDestravados() {
+    const saved = localStorage.getItem('mesesDestravados');
+    mesesDestravados = saved ? JSON.parse(saved) : [];
+}
+
+function salvarMesesDestravados() {
+    localStorage.setItem('mesesDestravados', JSON.stringify(mesesDestravados));
+    if (db) db.collection('sistema').doc('mesesDestravados').set({ lista: mesesDestravados }).catch(console.error);
+}
+
+// Retorna "YYYY-MM" a partir de uma data "YYYY-MM-DD" ou "YYYY-MM"
+function extrairMes(dataStr) {
+    if (!dataStr) return '';
+    return dataStr.substring(0, 7); // "YYYY-MM"
+}
+
+// Verifica se um mês está trancado
+// mesStr: "YYYY-MM" ou "YYYY-MM-DD"
+function mesEstaTrancado(mesStr) {
+    const mes = extrairMes(mesStr);
+    if (!mes) return false; // sem data = não trava (deixa o usuário preencher)
+    const mesAtual = getMesAtual();
+    if (mes >= mesAtual) return false; // mês atual ou futuro → liberado
+    // Mês passado → trancado, a menos que gerência destravou
+    const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
+    if (isGerencia && mesesDestravados.includes(mes)) return false;
+    return true;
+}
+
+// Verifica se o usuário pode editar um registro com a data dada
+function podeEditarRegistro(dataStr) {
+    return !mesEstaTrancado(dataStr);
+}
+
+// Verifica se gerência pode destravar um mês (só faz sentido pra mês passado)
+function mesPodeSerDestravado(mesStr) {
+    const mes = extrairMes(mesStr);
+    if (!mes) return false;
+    return mes < getMesAtual();
+}
+
+// Destravar/travar um mês (toggle, só gerência)
+function toggleDestravarMes(mesStr) {
+    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    if (userLogado?.role !== 'gerencia') {
+        alert('Apenas gerência pode destravar meses!');
+        return;
+    }
+    const mes = extrairMes(mesStr);
+    if (!mes) return;
+    if (mesesDestravados.includes(mes)) {
+        mesesDestravados = mesesDestravados.filter(m => m !== mes);
+    } else {
+        mesesDestravados.push(mes);
+    }
+    salvarMesesDestravados();
+    renderLucrosTable();
+    renderRendimentosTable();
 }
 
 // ===== FUNÇÕES DE AUTENTICAÇÃO =====
@@ -463,6 +542,7 @@ function abrirPainelAdmin() {
     
     document.getElementById('modal-admin').style.display = 'flex';
     renderAdminUsersTable();
+    renderMesesDestravados();
 }
 
 function fecharPainelAdmin() {
@@ -522,6 +602,68 @@ function criarNovoUsuario() {
     renderAdminUsersTable();
     carregarFiltroSocios();
     showSuccessMessage('Usuário criado com sucesso!');
+}
+
+// ===== GERENCIAR MESES TRAVADOS =====
+function renderMesesDestravados() {
+    const container = document.getElementById('meses-destravados-lista');
+    if (!container) return;
+
+    const agora = new Date();
+    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    // Gerar últimos 12 meses (incluindo atual)
+    const mesesDisponiveis = [];
+    for (let i = 12; i >= 1; i--) {
+        const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+        const mesStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (mesStr < mesAtual) { // Apenas meses passados
+            mesesDisponiveis.push({
+                valor: mesStr,
+                label: `${mesesNomes[d.getMonth()]} de ${d.getFullYear()}`,
+                destravado: mesesDestravados.includes(mesStr)
+            });
+        }
+    }
+
+    if (mesesDisponiveis.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-light); font-size: 0.85rem;">Nenhum mês anterior disponível para destravar.</p>';
+        return;
+    }
+
+    let html = '<div class="meses-grid">';
+    mesesDisponiveis.forEach(m => {
+        const cor = m.destravado ? '#28a745' : '#dc3545';
+        const texto = m.destravado ? '🔓 Editável' : '🔒 Travado';
+        const btnTexto = m.destravado ? '🔒 Travar' : '🔓 Destravar';
+        const btnClass = m.destravado ? 'btn-warning' : 'btn-success';
+        html += `
+            <div class="mes-item">
+                <div class="mes-info">
+                    <span class="mes-label">${m.label}</span>
+                    <span class="mes-status" style="color: ${cor};">${texto}</span>
+                </div>
+                <button class="btn btn-small ${btnClass}" onclick="toggleDestravarMes('${m.valor}'); renderMesesDestravados(); renderLucrosTable(); renderRendimentosTable();">${btnTexto}</button>
+            </div>`;
+    });
+    html += '</div>';
+
+    if (mesesDestravados.length > 0) {
+        html += `<div style="margin-top: 12px;"><button class="btn btn-small btn-danger" onclick="travarTodosMeses()">🔒 Travar Todos os Meses</button></div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function travarTodosMeses() {
+    if (!confirm('Deseja travar TODOS os meses destravados? Os registros voltarão a ficar somente leitura.')) return;
+    mesesDestravados = [];
+    salvarMesesDestravados();
+    renderMesesDestravados();
+    renderLucrosTable();
+    renderRendimentosTable();
+    showSuccessMessage('Todos os meses foram travados!');
 }
 
 function renderAdminUsersTable() {
@@ -849,6 +991,11 @@ function addLucroRow() {
 }
 
 function deleteLucroRow(id) {
+    const item = lucrosData.find(l => l.id === id);
+    if (item && item.data && !podeEditarRegistro(item.data)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível excluir.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        return;
+    }
     if (confirm('Deseja realmente excluir este registro?')) {
         lucrosData = lucrosData.filter(item => item.id !== id);
         renderLucrosTable();
@@ -859,15 +1006,26 @@ function deleteLucroRow(id) {
 
 function updateLucroData(id, field, value) {
     const item = lucrosData.find(l => l.id === id);
-    if (item) {
-        if (field === 'valor') {
-            item[field] = parseFloat(value) || 0;
-        } else {
-            item[field] = value;
+    if (!item) return;
+
+    // Verificar travamento mensal (exceto gerência com acesso)
+    if (field === 'data' || field === 'valor' || field === 'socioBeneficiario' || field === 'descricao' || field === 'observacoes') {
+        // Se o campo é data, verificar a NOVA data; senão, verificar a data atual do registro
+        const dataParaVerificar = field === 'data' ? value : item.data;
+        if (dataParaVerificar && !podeEditarRegistro(dataParaVerificar)) {
+            alert('🔒 Este registro pertence a um mês trancado! Não é possível editar.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+            renderLucrosTable(); // Re-render para restaurar o valor original
+            return;
         }
-        salvarDadosDoUsuario();
-        updateLucrosTotal();
     }
+
+    if (field === 'valor') {
+        item[field] = parseFloat(value) || 0;
+    } else {
+        item[field] = value;
+    }
+    salvarDadosDoUsuario();
+    updateLucrosTotal();
 }
 
 function aplicarFiltroLucros() {
@@ -889,14 +1047,14 @@ function renderLucrosTable() {
     
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     const isGerencia = userLogado.role === 'gerencia';
-    const podeEditar = !isGerencia || filtroAtual !== 'todos';
+    const podeEditarGeral = !isGerencia || filtroAtual !== 'todos';
 
     // Aplicar filtro de período
     let dados = lucrosData;
     if (filtroLucros.de)  dados = dados.filter(i => i.data && i.data >= filtroLucros.de);
     if (filtroLucros.ate) dados = dados.filter(i => i.data && i.data <= filtroLucros.ate);
     
-    if (dados.length === 0 && podeEditar) {
+    if (dados.length === 0 && podeEditarGeral) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
             <div class="empty-row-hint">📋 Nenhum registro encontrado. ${lucrosData.length === 0 ? 'Clique em <strong>➕ Adicionar Registro</strong> para começar.' : 'Tente ajustar o filtro de data.'}</div>
         </td></tr>`;
@@ -906,6 +1064,11 @@ function renderLucrosTable() {
 
     dados.forEach(item => {
         const row = document.createElement('tr');
+        const trancado = item.data && mesEstaTrancado(item.data);
+        const podeEditar = podeEditarGeral && !trancado;
+
+        // Classe visual para linha trancada
+        if (trancado) row.classList.add('row-trancado');
         
         const nomeBeneficiario = getNomeSocioBeneficiario(item);
         
@@ -946,7 +1109,7 @@ function renderLucrosTable() {
                     </div>`;
             }
         } else {
-            // Modo somente leitura (gerência visualizando todos)
+            // Modo somente leitura (gerência visualizando todos ou mês trancado)
             socioBeneficiarioHTML = `<span class="socio-beneficiario-text">${nomeBeneficiario || '-'}</span>`;
         }
         
@@ -955,6 +1118,9 @@ function renderLucrosTable() {
             : null;
         
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
+        
+        // Indicador de travamento
+        const lockBadge = trancado ? `<span class="badge-trancado" title="Mês trancado — edite o mês atual ou peça à gerência para destravar">🔒</span>` : '';
         
         row.innerHTML = `
             <td>${podeEditar
@@ -965,7 +1131,7 @@ function renderLucrosTable() {
                         <input type="date" class="input-date-hidden" value="${item.data || ''}" onchange="selecionarData(this)">
                     </span>
                   </div>`
-                : `<span class="date-display">${formatarDataBR(item.data)}</span>`
+                : `<span class="date-display">${formatarDataBR(item.data)} ${lockBadge}</span>`
             }</td>
             <td>
                 ${socioBeneficiarioHTML}
@@ -973,12 +1139,24 @@ function renderLucrosTable() {
             <td><input type="text" value="${item.descricao}" ${podeEditar ? '' : 'disabled'} placeholder="Descrição (opcional)" onchange="updateLucroData(${item.id}, 'descricao', this.value)">${proprietarioInfo}</td>
             <td><input type="number" step="0.01" value="${item.valor}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateLucroData(${item.id}, 'valor', this.value)"></td>
             <td><input type="text" value="${item.observacoes}" ${podeEditar ? '' : 'disabled'} placeholder="Observações (opcional)" onchange="updateLucroData(${item.id}, 'observacoes', this.value)"></td>
-            <td>${podeEditar ? `<button class="btn btn-delete" onclick="deleteLucroRow(${item.id})">🗑️ Excluir</button>` : '-'}</td>
+            <td>${podeEditar
+                ? `<button class="btn btn-delete" onclick="deleteLucroRow(${item.id})">🗑️ Excluir</button>`
+                : trancado
+                    ? `<button class="btn btn-locked" disabled title="Mês trancado">🔒</button>`
+                    : '-'
+            }</td>
         `;
         tbody.appendChild(row);
     });
     
     updateLucrosTotal();
+    
+    // Mostrar/ocultar alerta de mês trancado
+    const alertaLucros = document.getElementById('alerta-lucros-trancado');
+    if (alertaLucros) {
+        const temTrancado = dados.some(item => item.data && mesEstaTrancado(item.data));
+        alertaLucros.style.display = temTrancado ? 'flex' : 'none';
+    }
 }
 
 function updateLucrosTotal() {
@@ -1022,6 +1200,11 @@ function addRendimentoRow() {
 }
 
 function deleteRendimentoRow(id) {
+    const item = rendimentosData.find(r => r.id === id);
+    if (item && item.mes && !podeEditarRegistro(item.mes)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível excluir.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        return;
+    }
     if (confirm('Deseja realmente excluir este registro?')) {
         rendimentosData = rendimentosData.filter(item => item.id !== id);
         renderRendimentosTable();
@@ -1032,20 +1215,35 @@ function deleteRendimentoRow(id) {
 
 function updateRendimentoData(id, field, value) {
     const item = rendimentosData.find(r => r.id === id);
-    if (item) {
-        if (field === 'valorRendimento' || field === 'irRetido') {
-            item[field] = parseFloat(value) || 0;
-        } else {
-            item[field] = value;
-        }
-        salvarDadosDoUsuario();
-        updateRendimentosTotal();
+    if (!item) return;
+
+    // Verificar travamento mensal
+    if (item.mes && !podeEditarRegistro(item.mes)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível editar.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        renderRendimentosTable();
+        return;
     }
+
+    if (field === 'valorRendimento' || field === 'irRetido') {
+        item[field] = parseFloat(value) || 0;
+    } else {
+        item[field] = value;
+    }
+    salvarDadosDoUsuario();
+    updateRendimentosTotal();
 }
 
 function updateRendimentoMes(id, type, value) {
     const item = rendimentosData.find(r => r.id === id);
     if (!item) return;
+
+    // Verificar travamento mensal antes de alterar
+    if (item.mes && !podeEditarRegistro(item.mes)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível editar.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        renderRendimentosTable();
+        return;
+    }
+
     let year = '', month = '';
     if (item.mes) {
         const parts = item.mes.split('-');
@@ -1079,7 +1277,7 @@ function renderRendimentosTable() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     const isGerencia = userLogado.role === 'gerencia';
     // Admin sempre pode editar/excluir; sócio também (dados próprios)
-    const podeEditar = true;
+    const podeEditarGeral = true;
 
     // Aplicar filtro de mês/ano
     let dados = rendimentosData;
@@ -1103,6 +1301,11 @@ function renderRendimentosTable() {
 
     dados.forEach(item => {
         const row = document.createElement('tr');
+        const trancado = item.mes && mesEstaTrancado(item.mes);
+        const podeEditar = podeEditarGeral && !trancado;
+
+        // Classe visual para linha trancada
+        if (trancado) row.classList.add('row-trancado');
         
         const proprietario = isGerencia && filtroAtual === 'todos' 
             ? todosOsSocios.find(s => s.cpf === item.proprietarioCpf) 
@@ -1121,23 +1324,35 @@ function renderRendimentosTable() {
         const anoOpts = `<option value="">Ano</option>` +
             anosPreDef.map(a => `<option value="${a}"${anoPart===String(a)?' selected':''}>${a}</option>`).join('');
         
+        // Indicador de travamento
+        const lockBadge = trancado ? `<span class="badge-trancado" title="Mês trancado — edite o mês atual ou peça à gerência para destravar">🔒</span>` : '';
+        const lockCol = trancado ? `<td><button class="btn btn-locked" disabled title="Mês trancado">🔒</button></td>` : `<td><button class="btn btn-delete" onclick="deleteRendimentoRow(${item.id})">🗑️ Excluir</button></td>`;
+        
         row.innerHTML = `
             <td>
-                <div style="display:flex;gap:4px;">
-                    <select style="flex:1.8;" onchange="updateRendimentoMes(${item.id},'mes',this.value)">${mesOpts}</select>
-                    <select style="flex:1;" onchange="updateRendimentoMes(${item.id},'ano',this.value)">${anoOpts}</select>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <select style="flex:1.8;" ${podeEditar ? '' : 'disabled'} onchange="updateRendimentoMes(${item.id},'mes',this.value)">${mesOpts}</select>
+                    <select style="flex:1;" ${podeEditar ? '' : 'disabled'} onchange="updateRendimentoMes(${item.id},'ano',this.value)">${anoOpts}</select>
+                    ${lockBadge}
                 </div>
             </td>
-            <td><input type="text" value="${item.banco}" placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
-            <td><input type="number" step="0.01" value="${item.valorRendimento}" placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
-            <td><input type="number" step="0.01" value="${item.irRetido}" placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
-            <td><input type="text" value="${item.observacoes}" placeholder="Observações (opcional)" onchange="updateRendimentoData(${item.id}, 'observacoes', this.value)"></td>
-            <td><button class="btn btn-delete" onclick="deleteRendimentoRow(${item.id})">🗑️ Excluir</button></td>
+            <td><input type="text" value="${item.banco}" ${podeEditar ? '' : 'disabled'} placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
+            <td><input type="number" step="0.01" value="${item.valorRendimento}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
+            <td><input type="number" step="0.01" value="${item.irRetido}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
+            <td><input type="text" value="${item.observacoes}" ${podeEditar ? '' : 'disabled'} placeholder="Observações (opcional)" onchange="updateRendimentoData(${item.id}, 'observacoes', this.value)"></td>
+            ${lockCol}
         `;
         tbody.appendChild(row);
     });
     
     updateRendimentosTotalFiltrado(dados);
+    
+    // Mostrar/ocultar alerta de mês trancado
+    const alertaRend = document.getElementById('alerta-rendimentos-trancado');
+    if (alertaRend) {
+        const temTrancado = dados.some(item => item.mes && mesEstaTrancado(item.mes));
+        alertaRend.style.display = temTrancado ? 'flex' : 'none';
+    }
 }
 
 function updateRendimentosTotal() {
@@ -1243,6 +1458,30 @@ function clearAllData(type) {
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para limpar dados.');
+        return;
+    }
+    
+    const dataRef = type === 'lucros' ? lucrosData : rendimentosData;
+    const campoData = type === 'lucros' ? 'data' : 'mes';
+    const trancados = dataRef.filter(item => item[campoData] && mesEstaTrancado(item[campoData]));
+
+    if (trancados.length > 0) {
+        const editaveis = dataRef.length - trancados.length;
+        if (editaveis === 0) {
+            alert(`🔒 Todos os registros pertencem a meses trancados e não podem ser excluídos.\n\nApenas gerência pode destravar meses pelo painel de Administração.`);
+            return;
+        }
+        if (!confirm(`🔒 ${trancados.length} registro(s) de meses trancados serão mantidos.\nApenas os ${editaveis} registro(s) do mês atual serão limpos.\n\nDeseja continuar?`)) return;
+        // Limpar apenas registros editáveis
+        if (type === 'lucros') {
+            lucrosData = lucrosData.filter(item => item.data && mesEstaTrancado(item.data));
+            renderLucrosTable();
+        } else {
+            rendimentosData = rendimentosData.filter(item => item.mes && mesEstaTrancado(item.mes));
+            renderRendimentosTable();
+        }
+        salvarDadosDoUsuario();
+        showSuccessMessage('Dados do mês atual limpos com sucesso!');
         return;
     }
     

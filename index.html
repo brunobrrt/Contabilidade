@@ -95,6 +95,9 @@
                     <button class="btn btn-danger" onclick="clearAllData('lucros')">Limpar Tudo</button>
                 </div>
             </div>
+            <div class="alerta-trancado" style="display:none;" id="alerta-lucros-trancado">
+                🔒 <strong>Travamento mensal:</strong> Registros de meses passados estão travados. Apenas o mês atual pode ser editado. Sócio? Fale com a gerência. Gerência? Use o painel <strong>Administração</strong> para destravar meses.
+            </div>
             <!-- Filtro de período -->
             <div class="filtro-data-container">
                 <span class="filtro-data-label">📅 Filtrar por período:</span>
@@ -140,6 +143,9 @@
                     <button class="btn btn-secondary" onclick="exportToExcel('rendimentos')"> Exportar Excel</button>
                     <button class="btn btn-danger" onclick="clearAllData('rendimentos')">Limpar Tudo</button>
                 </div>
+            </div>
+            <div class="alerta-trancado" style="display:none;" id="alerta-rendimentos-trancado">
+                🔒 <strong>Travamento mensal:</strong> Registros de meses passados estão travados. Apenas o mês atual pode ser editado. Sócio? Fale com a gerência. Gerência? Use o painel <strong>Administração</strong> para destravar meses.
             </div>
             <!-- Filtro de mês/ano -->
             <div class="filtro-data-container">
@@ -273,7 +279,15 @@
                 </div>
                 <hr>
                 <div class="admin-section">
-                    <h3>Gerenciar Usuários</h3>
+                    <h3>🔒 Controle de Meses Travados</h3>
+                    <p style="color: var(--text-light); font-size: 0.85rem; margin-bottom: 12px;">
+                        Registros de meses passados ficam travados por padrão. Use esta seção para destravar meses específicos e permitir edições retroativas.
+                    </p>
+                    <div id="meses-destravados-lista"></div>
+                </div>
+                <hr>
+                <div class="admin-section">
+                    <h3>👥 Gerenciar Usuários</h3>
                     <table id="admin-users-table">
                         <thead>
                             <tr>

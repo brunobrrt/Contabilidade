@@ -892,4 +892,91 @@ hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
 
     .user-name { display: none; }
     .btn-topbar, .btn-topbar-gold, .btn-topbar-danger { padding: 6px 10px; font-size: 0.78rem; }
+
+    .meses-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== TRAVAMENTO MENSAL ===== */
+.row-trancado {
+    background: rgba(220, 53, 69, 0.04) !important;
+}
+.row-trancado td {
+    opacity: 0.7;
+}
+.row-trancado td:first-child {
+    border-left: 3px solid #dc3545;
+}
+.row-trancado:hover td {
+    opacity: 0.85;
+}
+
+.badge-trancado {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.btn-locked {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+    border: 1px solid rgba(220, 53, 69, 0.2);
+    cursor: not-allowed !important;
+    opacity: 0.6;
+    font-size: 0.85rem;
+    padding: 6px 10px;
+}
+
+.meses-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 8px;
+}
+
+.mes-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    transition: border-color 0.2s;
+}
+.mes-item:hover {
+    border-color: var(--gold);
+}
+
+.mes-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.mes-label {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--text-dark);
+}
+.mes-status {
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+/* Alerta de mês trancado */
+.alerta-trancado {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    color: #856404;
+}
+.alerta-trancado strong {
+    color: #664d03;
 }
