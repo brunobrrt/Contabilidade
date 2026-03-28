@@ -248,8 +248,13 @@ async function sincronizarDoFirebase() {
 
 async function syncFirebaseUsuarios() {
     if (!db) return;
-    const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
-    db.collection('sistema').doc('usuarios').set(encrypted).catch(console.error);
+    try {
+        const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
+        await db.collection('sistema').doc('usuarios').set(encrypted);
+        console.log('✅ Usuários sincronizados com Firebase');
+    } catch (e) {
+        console.error('❌ Erro ao sincronizar usuários no Firebase:', e.message);
+    }
 }
 
 async function syncFirebaseDados(cpf, dados) {
@@ -417,54 +422,84 @@ function fazerLogin() {
         // Recarregar lista de usuários (pode ter sido atualizada pelo Firebase)
         carregarTodosOsSocios();
         
-        const socio = todosOsSocios.find(s => s.cpf === cpf);
-        
+        const tentarLogin = (socio) => {
+            if (!socio) {
+                alert('CPF não encontrado!');
+                return;
+            }
+
+            const fazerLoginReal = async (senhaOk) => {
+                if (!senhaOk) {
+                    alert('Senha incorreta!');
+                    return;
+                }
+                
+                // Iniciar sessão criptográfica (se disponível)
+                if (typeof T7Crypto !== 'undefined') {
+                    try {
+                        await T7Crypto.initSession(senha);
+                    } catch (e) {
+                        console.warn('Crypto não disponível, continuando sem:', e.message);
+                    }
+                }
+
+                // Login no Firebase Auth (transparente pro usuário)
+                await firebaseAuthComCPF(cpf, senha);
+
+                // Sincronizar dados do Firebase após login
+                if (db) {
+                    await sincronizarDoFirebase();
+                }
+                
+                usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+                localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+                
+                document.getElementById('login-cpf').value = '';
+                document.getElementById('login-senha').value = '';
+                
+                mostrarSistema();
+            };
+
+            // Verificar senha (hash, plaintext legado, ou fallback)
+            if (socio.senhaHash && typeof T7Crypto !== 'undefined') {
+                T7Crypto.verifyPassword(senha, socio.senhaHash).then(fazerLoginReal);
+            } else if (socio.senha) {
+                // Legado: senha em plaintext
+                fazerLoginReal(socio.senha === senha);
+            } else {
+                alert('Erro: dados de senha não encontrados para este usuário.');
+            }
+        };
+
+        let socio = todosOsSocios.find(s => s.cpf === cpf);
+
         if (!socio) {
-            alert('CPF não encontrado!');
+            // Usuário não está no localStorage — tentar buscar do Firebase
+            if (db) {
+                db.collection('sistema').doc('usuarios').get().then(async doc => {
+                    if (doc.exists) {
+                        const raw = doc.data();
+                        let lista = null;
+                        if (raw.__encrypted && typeof T7Crypto !== 'undefined') {
+                            try { lista = (await T7Crypto.decrypt(raw))?.lista || null; } catch(e) {}
+                        } else {
+                            lista = raw.lista || null;
+                        }
+                        if (lista && Array.isArray(lista) && lista.length > 0) {
+                            localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+                            carregarTodosOsSocios();
+                            socio = todosOsSocios.find(s => s.cpf === cpf);
+                        }
+                    }
+                    tentarLogin(socio);
+                }).catch(() => tentarLogin(null));
+            } else {
+                tentarLogin(null);
+            }
             return;
         }
 
-        const fazerLoginReal = async (senhaOk) => {
-            if (!senhaOk) {
-                alert('Senha incorreta!');
-                return;
-            }
-            
-            // Iniciar sessão criptográfica (se disponível)
-            if (typeof T7Crypto !== 'undefined') {
-                try {
-                    await T7Crypto.initSession(senha);
-                } catch (e) {
-                    console.warn('Crypto não disponível, continuando sem:', e.message);
-                }
-            }
-
-            // Login no Firebase Auth (transparente pro usuário)
-            await firebaseAuthComCPF(cpf, senha);
-
-            // Sincronizar dados do Firebase após login
-            if (db) {
-                await sincronizarDoFirebase();
-            }
-            
-            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
-            localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
-            
-            document.getElementById('login-cpf').value = '';
-            document.getElementById('login-senha').value = '';
-            
-            mostrarSistema();
-        };
-
-        // Verificar senha (hash, plaintext legado, ou fallback)
-        if (socio.senhaHash && typeof T7Crypto !== 'undefined') {
-            T7Crypto.verifyPassword(senha, socio.senhaHash).then(fazerLoginReal);
-        } else if (socio.senha) {
-            // Legado: senha em plaintext
-            fazerLoginReal(socio.senha === senha);
-        } else {
-            alert('Erro: dados de senha não encontrados para este usuário.');
-        }
+        tentarLogin(socio);
     } catch (e) {
         console.error('Erro no login:', e);
         alert('Erro ao fazer login: ' + e.message);
