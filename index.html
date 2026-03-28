@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Contabilidade</title>
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -20,7 +23,7 @@
     <div id="login-screen" class="auth-screen">
         <div class="auth-container">
             <div class="auth-header">
-                <span class="auth-logo"></span>
+                <img src="assets/logo-192.png" alt="T7 System" class="auth-logo">
                 <h1>Sistema de Contabilidade</h1>
                 <p>Escritório de Advocacia e Contabilidade</p>
             </div>
@@ -48,10 +51,10 @@
         <!-- Top Bar -->
         <div class="topbar">
             <div class="topbar-brand">
-                <span class="brand-logo"></span>
+                <img src="assets/logo-192.png" alt="T7 System" class="brand-logo">
                 <div class="brand-text">
                     <span class="brand-name">Sistema de Contabilidade</span>
-                    <span class="brand-sub">Escritório de Advocacia e Contabilidade</span>
+                    <span class="brand-sub">Escritório de Advocacia e Contabilidade - Período de Teste</span>
                 </div>
             </div>
             <div class="topbar-user">
@@ -75,7 +78,7 @@
             <div class="filtro-content">
                 <label>Visualizar dados de:</label>
                 <select id="filtro-socio" onchange="aplicarFiltro()">
-                    <option value="todos">Todos os Sócios</option>
+                    <option value="todos">Todos os Clientes</option>
                 </select>
                 <button class="btn btn-secondary btn-small" onclick="exportarTodosOsDados()"> Exportar Tudo</button>
                 <button id="btn-exportar-empresa" class="btn btn-secondary btn-small" onclick="exportarEmpresaSelecionada()" style="display:none;"> Exportar Empresa Selecionada</button>
@@ -94,6 +97,9 @@
                     <button class="btn btn-secondary" onclick="exportToExcel('lucros')"> Exportar Excel</button>
                     <button class="btn btn-danger" onclick="clearAllData('lucros')">Limpar Tudo</button>
                 </div>
+            </div>
+            <div class="alerta-trancado" style="display:none;" id="alerta-lucros-trancado">
+                🔒 <strong>Travamento mensal:</strong> Registros de meses passados estão travados. Apenas o mês atual pode ser editado. Cliente? Fale com a gerência. Gerência? Use o painel <strong>Administração</strong> para destravar meses.
             </div>
             <!-- Filtro de período -->
             <div class="filtro-data-container">
@@ -140,6 +146,9 @@
                     <button class="btn btn-secondary" onclick="exportToExcel('rendimentos')"> Exportar Excel</button>
                     <button class="btn btn-danger" onclick="clearAllData('rendimentos')">Limpar Tudo</button>
                 </div>
+            </div>
+            <div class="alerta-trancado" style="display:none;" id="alerta-rendimentos-trancado">
+                🔒 <strong>Travamento mensal:</strong> Registros de meses passados estão travados. Apenas o mês atual pode ser editado. Cliente? Fale com a gerência. Gerência? Use o painel <strong>Administração</strong> para destravar meses.
             </div>
             <!-- Filtro de mês/ano -->
             <div class="filtro-data-container">
@@ -197,7 +206,7 @@
         </section>
 
         <footer>
-            <p>Sistema de Contabilidade  Dados armazenados localmente no navegador</p>
+            <p>Sistema de Contabilidade - Período de Teste</p>
         </footer>
     </div>
 
@@ -218,7 +227,7 @@
                         </div>
                         <div class="edit-form-row">
                             <select id="socios-role">
-                                <option value="socio">Sócio — acesso limitado</option>
+                                <option value="cliente">Cliente — acesso próprio/option>
                                 <option value="gerencia">Gerência — acesso total</option>
                             </select>
                             <input type="password" id="socios-senha" placeholder="Senha inicial">
@@ -263,7 +272,7 @@
                         </div>
                         <div class="edit-form-row">
                             <select id="admin-role">
-                                <option value="socio">Sócio  acesso limitado</option>
+                                <option value="cliente">Cliente  acesso próprio/option>
                                 <option value="gerencia">Gerência  acesso total</option>
                             </select>
                             <input type="password" id="admin-senha" placeholder="Senha inicial">
@@ -273,7 +282,15 @@
                 </div>
                 <hr>
                 <div class="admin-section">
-                    <h3>Gerenciar Usuários</h3>
+                    <h3>🔒 Controle de Meses Travados</h3>
+                    <p style="color: var(--text-light); font-size: 0.85rem; margin-bottom: 12px;">
+                        Registros de meses passados ficam travados por padrão. Use esta seção para destravar meses específicos e permitir edições retroativas.
+                    </p>
+                    <div id="meses-destravados-lista"></div>
+                </div>
+                <hr>
+                <div class="admin-section">
+                    <h3>👥 Gerenciar Usuários</h3>
                     <table id="admin-users-table">
                         <thead>
                             <tr>
@@ -317,7 +334,7 @@
                         <div class="form-field">
                             <label>Perfil</label>
                             <select id="edit-user-role">
-                                <option value="socio">Sócio  acesso limitado</option>
+                                <option value="cliente">Cliente  acesso próprio/option>
                                 <option value="gerencia">Gerência  acesso total</option>
                             </select>
                         </div>
@@ -374,8 +391,10 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
+    <script src="crypto.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

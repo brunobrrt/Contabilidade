@@ -1,0 +1,20 @@
+# Firebase credentials (API key é público por design — segurança nas Firestore Rules)
+# firebase-config.js mantido no repo. Marcar como "won't fix" no GitGuardian.
+
+# Node
+node_modules/
+
+# Service Account (NUNCA versionar — dá acesso total ao Firebase)
+service-account.json
+*firebase-adminsdk*.json
+
+# Debug logs
+firebase-debug.log
+
+# IDE
+.vscode/
+.specstory/
+
+# OS
+.DS_Store
+Thumbs.db

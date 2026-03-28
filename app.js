@@ -9,11 +9,17 @@ let db = null; // Firebase Firestore
 // Filtros de data por aba
 let filtroLucros  = { de: '', ate: '' };
 let filtroRendimentos = { mes: '', ano: '' };
+// Meses destravados pela gerência (lista de "YYYY-MM")
+let mesesDestravados = [];
 
 // ===== INICIALIZAÇÃO =====
 window.addEventListener('DOMContentLoaded', async () => {
     mostrarCarregandoFirebase(true);
-    await inicializarFirebase();
+    try {
+        await inicializarFirebase();
+    } catch (e) {
+        console.warn('Erro na inicialização Firebase:', e.message);
+    }
     mostrarCarregandoFirebase(false);
     inicializarSistema();
     verificarLogin();
@@ -22,20 +28,70 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ===== INICIALIZAÇÃO DO SISTEMA =====
 function inicializarSistema() {
     carregarTodosOsSocios();
+    carregarMesesDestravados();
     
-    // Criar usuário admin padrão se não existir
+    // Criar usuário admin padrão se não existir (local E Firebase)
     if (todosOsSocios.length === 0) {
+        // Verificar se Firebase já tem dados antes de criar admin local
+        if (db) {
+            db.collection('sistema').doc('usuarios').get().then(doc => {
+                if (doc.exists && doc.data().lista && doc.data().lista.length > 0) {
+                    // Firebase já tem usuários — carregar de lá
+                    carregarTodosOsSocios();
+                    return;
+                }
+                // Firebase vazio — criar admin local
+                criarAdminPadrao();
+            }).catch(() => {
+                // Firebase indisponível — criar admin local
+                criarAdminPadrao();
+            });
+        } else {
+            criarAdminPadrao();
+        }
+    } else {
+        // Migrar senhas plaintext para hash (executa uma vez)
+        let migrado = false;
+        todosOsSocios.forEach(s => {
+            if (s.senha && !s.senhaHash) {
+                T7Crypto.hashPassword(s.senha).then(hash => {
+                    s.senhaHash = hash;
+                    delete s.senha;
+                    salvarTodosOsSocios();
+                });
+                migrado = true;
+            }
+        });
+        if (migrado) console.log('Senhas migradas para hash SHA-256');
+    }
+}
+
+function criarAdminPadrao() {
+    const criarComHash = async () => {
+        let senhaHash = null;
+        if (typeof T7Crypto !== 'undefined') {
+            try {
+                senhaHash = await T7Crypto.hashPassword('admin123');
+            } catch (e) {
+                console.warn('Hash não disponível:', e.message);
+            }
+        }
         const admin = {
             id: Date.now(),
             nome: 'Administrador',
             cpf: '00000000000',
-            senha: 'admin123',
+            senha: 'admin123', // fallback plaintext
             role: 'gerencia'
         };
+        if (senhaHash) {
+            admin.senhaHash = senhaHash;
+            delete admin.senha;
+        }
         todosOsSocios.push(admin);
         salvarTodosOsSocios();
         console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
-    }
+    };
+    criarComHash();
 }
 
 // ===== FIREBASE =====
@@ -52,56 +108,214 @@ async function inicializarFirebase() {
         }
         firebase.initializeApp(window.firebaseConfig);
         db = firebase.firestore();
-        await sincronizarDoFirebase();
-        console.log('✅ Firebase conectado!');
+        console.log('✅ Firebase inicializado!');
     } catch (e) {
         console.warn('Firebase indisponível, usando dados locais:', e.message);
         db = null;
     }
 }
 
+// Login no Firebase Auth com CPF (transparente pro usuário)
+// Cada CPF vira um email: cpf@t7system.local
+async function firebaseAuthComCPF(cpf, senha) {
+    if (!db) return false;
+    try {
+        const auth = firebase.auth();
+        const email = `${cpf}@t7system.local`;
+
+        try {
+            // Tentar logar (usuário já existe)
+            await auth.signInWithEmailAndPassword(email, senha);
+            console.log(`🔐 Firebase Auth: ${cpf} conectado`);
+            return true;
+        } catch (signInErr) {
+            if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
+                // Criar usuário no Firebase Auth
+                try {
+                    await auth.createUserWithEmailAndPassword(email, senha);
+                    console.log(`🔐 Firebase Auth: ${cpf} criado`);
+                    return true;
+                } catch (createErr) {
+                    console.warn('Erro ao criar auth:', createErr.message);
+                    return false;
+                }
+            }
+            console.warn('Erro no auth:', signInErr.message);
+            return false;
+        }
+    } catch (e) {
+        console.warn('Firebase Auth falhou:', e.message);
+        return false;
+    }
+}
+
 async function sincronizarDoFirebase() {
     if (!db) return;
+    
+    const auth = firebase.auth();
+    const user = auth.currentUser;
+    if (!user) {
+        console.warn('Sem autenticação Firebase — sync pulado');
+        return;
+    }
+
+    const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
+    const cpfAtual = usuarioLogado?.cpf;
+
     try {
+        // Carregar lista de usuários (apenas gerência ou para verificação)
         const usuariosDoc = await db.collection('sistema').doc('usuarios').get();
         if (usuariosDoc.exists) {
-            const lista = usuariosDoc.data().lista || [];
-            if (lista.length > 0) localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+            const raw = usuariosDoc.data();
+            const lista = raw.__encrypted ? await T7Crypto.decrypt(raw) : (raw.lista || []);
+            if (Array.isArray(lista) && lista.length > 0) {
+                localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+                carregarTodosOsSocios();
+            }
         }
-        const dadosSnap = await db.collection('dados_usuario').get();
-        dadosSnap.forEach(d => {
-            localStorage.setItem(`dados_${d.id}`, JSON.stringify({
-                lucros: d.data().lucros || [],
-                rendimentos: d.data().rendimentos || []
-            }));
-        });
-        const sociosSnap = await db.collection('socios_empresa').get();
-        sociosSnap.forEach(d => {
-            localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(d.data().lista || []));
-        });
+
+        // Carregar dados do próprio usuário (ou todos se gerência)
+        if (isGerencia) {
+            // Gerência carrega dados de todos os clientes
+            const dadosSnap = await db.collection('dados_usuario').get();
+            dadosSnap.forEach(async d => {
+                const raw = d.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`dados_${d.id}`, JSON.stringify({
+                    lucros: dados.lucros || [],
+                    rendimentos: dados.rendimentos || []
+                }));
+            });
+            const sociosSnap = await db.collection('socios_empresa').get();
+            sociosSnap.forEach(async d => {
+                const raw = d.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(dados.lista || []));
+            });
+        } else if (cpfAtual) {
+            // Cliente carrega apenas próprios dados
+            const meuDoc = await db.collection('dados_usuario').doc(cpfAtual).get();
+            if (meuDoc.exists) {
+                const raw = meuDoc.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`dados_${cpfAtual}`, JSON.stringify({
+                    lucros: dados.lucros || [],
+                    rendimentos: dados.rendimentos || []
+                }));
+            }
+            const sociosDoc = await db.collection('socios_empresa').doc(cpfAtual).get();
+            if (sociosDoc.exists) {
+                const raw = sociosDoc.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem(`socios_empresa_${cpfAtual}`, JSON.stringify(dados.lista || []));
+            }
+        }
+
+        // Meses destravados (só gerência)
+        if (isGerencia) {
+            const mesesDoc = await db.collection('sistema').doc('mesesDestravados').get();
+            if (mesesDoc.exists) {
+                const raw = mesesDoc.data();
+                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                if (dados) localStorage.setItem('mesesDestravados', JSON.stringify(dados.lista || dados || []));
+            }
+        }
     } catch (e) {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
     }
 }
 
-function syncFirebaseUsuarios() {
+async function syncFirebaseUsuarios() {
     if (!db) return;
-    db.collection('sistema').doc('usuarios').set({ lista: todosOsSocios }).catch(console.error);
+    const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
+    db.collection('sistema').doc('usuarios').set(encrypted).catch(console.error);
 }
 
-function syncFirebaseDados(cpf, dados) {
+async function syncFirebaseDados(cpf, dados) {
     if (!db) return;
-    db.collection('dados_usuario').doc(cpf).set(dados).catch(console.error);
+    const encrypted = await T7Crypto.encrypt(dados);
+    db.collection('dados_usuario').doc(cpf).set(encrypted).catch(console.error);
 }
 
-function syncFirebaseSociosEmpresa(cpf, lista) {
+async function syncFirebaseSociosEmpresa(cpf, lista) {
     if (!db) return;
-    db.collection('socios_empresa').doc(cpf).set({ lista }).catch(console.error);
+    const encrypted = await T7Crypto.encrypt({ lista });
+    db.collection('socios_empresa').doc(cpf).set(encrypted).catch(console.error);
 }
 
-function deleteFirebaseDados(cpf) {
+async function deleteFirebaseDados(cpf) {
     if (!db) return;
     db.collection('dados_usuario').doc(cpf).delete().catch(console.error);
+}
+
+// ===== TRAVAMENTO MENSAL =====
+// Cada mês pode ser editado apenas durante o próprio mês.
+// Ex: registros de março → editáveis em março, travam dia 1º de abril.
+// Gerência pode destravar meses específicos pelo painel admin.
+
+function getMesAtual() {
+    const agora = new Date();
+    return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function carregarMesesDestravados() {
+    const saved = localStorage.getItem('mesesDestravados');
+    mesesDestravados = saved ? JSON.parse(saved) : [];
+}
+
+function salvarMesesDestravados() {
+    localStorage.setItem('mesesDestravados', JSON.stringify(mesesDestravados));
+    if (db) db.collection('sistema').doc('mesesDestravados').set({ lista: mesesDestravados }).catch(console.error);
+}
+
+// Retorna "YYYY-MM" a partir de uma data "YYYY-MM-DD" ou "YYYY-MM"
+function extrairMes(dataStr) {
+    if (!dataStr) return '';
+    return dataStr.substring(0, 7); // "YYYY-MM"
+}
+
+// Verifica se um mês está trancado
+// mesStr: "YYYY-MM" ou "YYYY-MM-DD"
+function mesEstaTrancado(mesStr) {
+    const mes = extrairMes(mesStr);
+    if (!mes) return false; // sem data = não trava (deixa o usuário preencher)
+    const mesAtual = getMesAtual();
+    if (mes >= mesAtual) return false; // mês atual ou futuro → liberado
+    // Mês passado → trancado, a menos que gerência destravou
+    const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
+    if (isGerencia && mesesDestravados.includes(mes)) return false;
+    return true;
+}
+
+// Verifica se o usuário pode editar um registro com a data dada
+function podeEditarRegistro(dataStr) {
+    return !mesEstaTrancado(dataStr);
+}
+
+// Verifica se gerência pode destravar um mês (só faz sentido pra mês passado)
+function mesPodeSerDestravado(mesStr) {
+    const mes = extrairMes(mesStr);
+    if (!mes) return false;
+    return mes < getMesAtual();
+}
+
+// Destravar/travar um mês (toggle, só gerência)
+function toggleDestravarMes(mesStr) {
+    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    if (userLogado?.role !== 'gerencia') {
+        alert('Apenas gerência pode destravar meses!');
+        return;
+    }
+    const mes = extrairMes(mesStr);
+    if (!mes) return;
+    if (mesesDestravados.includes(mes)) {
+        mesesDestravados = mesesDestravados.filter(m => m !== mes);
+    } else {
+        mesesDestravados.push(mes);
+    }
+    salvarMesesDestravados();
+    renderLucrosTable();
+    renderRendimentosTable();
 }
 
 // ===== FUNÇÕES DE AUTENTICAÇÃO =====
@@ -152,7 +366,7 @@ function mostrarSistema() {
             document.getElementById('filtro-gerencia').style.display = 'block';
             carregarFiltroSocios();
         } else {
-            roleBadge.textContent = '👔 SÓCIO';
+            roleBadge.textContent = '👔 CLIENTE';
             roleBadge.className = 'role-badge socio';
             document.getElementById('btn-admin').style.display = 'none';
             document.getElementById('btn-ver-usuarios').style.display = 'none';
@@ -170,34 +384,70 @@ function mostrarSistema() {
 }
 
 function fazerLogin() {
-    const cpf = document.getElementById('login-cpf').value.replace(/\D/g, '');
-    const senha = document.getElementById('login-senha').value;
-    
-    if (!cpf || !senha) {
-        alert('Por favor, preencha todos os campos!');
-        return;
+    try {
+        const cpf = document.getElementById('login-cpf').value.replace(/\D/g, '');
+        const senha = document.getElementById('login-senha').value;
+        
+        if (!cpf || !senha) {
+            alert('Por favor, preencha todos os campos!');
+            return;
+        }
+
+        // Recarregar lista de usuários (pode ter sido atualizada pelo Firebase)
+        carregarTodosOsSocios();
+        
+        const socio = todosOsSocios.find(s => s.cpf === cpf);
+        
+        if (!socio) {
+            alert('CPF não encontrado!');
+            return;
+        }
+
+        const fazerLoginReal = async (senhaOk) => {
+            if (!senhaOk) {
+                alert('Senha incorreta!');
+                return;
+            }
+            
+            // Iniciar sessão criptográfica (se disponível)
+            if (typeof T7Crypto !== 'undefined') {
+                try {
+                    await T7Crypto.initSession(senha);
+                } catch (e) {
+                    console.warn('Crypto não disponível, continuando sem:', e.message);
+                }
+            }
+
+            // Login no Firebase Auth (transparente pro usuário)
+            await firebaseAuthComCPF(cpf, senha);
+
+            // Sincronizar dados do Firebase após login
+            if (db) {
+                await sincronizarDoFirebase();
+            }
+            
+            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+            localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+            
+            document.getElementById('login-cpf').value = '';
+            document.getElementById('login-senha').value = '';
+            
+            mostrarSistema();
+        };
+
+        // Verificar senha (hash, plaintext legado, ou fallback)
+        if (socio.senhaHash && typeof T7Crypto !== 'undefined') {
+            T7Crypto.verifyPassword(senha, socio.senhaHash).then(fazerLoginReal);
+        } else if (socio.senha) {
+            // Legado: senha em plaintext
+            fazerLoginReal(socio.senha === senha);
+        } else {
+            alert('Erro: dados de senha não encontrados para este usuário.');
+        }
+    } catch (e) {
+        console.error('Erro no login:', e);
+        alert('Erro ao fazer login: ' + e.message);
     }
-    
-    const socio = todosOsSocios.find(s => s.cpf === cpf);
-    
-    if (!socio) {
-        alert('CPF não encontrado!');
-        return;
-    }
-    
-    if (socio.senha !== senha) {
-        alert('Senha incorreta!');
-        return;
-    }
-    
-    usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
-    localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
-    
-    // Limpar campos
-    document.getElementById('login-cpf').value = '';
-    document.getElementById('login-senha').value = '';
-    
-    mostrarSistema();
 }
 
 function fazerLogout() {
@@ -207,6 +457,7 @@ function fazerLogout() {
         lucrosData = [];
         rendimentosData = [];
         filtroAtual = 'todos';
+        T7Crypto.clearSession(); // Limpar chave de criptografia da memória
         mostrarLogin();
     }
 }
@@ -388,7 +639,7 @@ function fecharModalSocios() {
     document.getElementById('socios-nome').value = '';
     document.getElementById('socios-cpf').value = '';
     document.getElementById('socios-senha').value = '';
-    document.getElementById('socios-role').value = 'socio';
+    document.getElementById('socios-role').value = 'cliente';
 }
 
 function criarUsuarioNoModalSocios() {
@@ -414,25 +665,27 @@ function criarUsuarioNoModalSocios() {
         return;
     }
 
-    const novoUsuario = {
-        id: Date.now(),
-        nome: nome,
-        cpf: cpf,
-        senha: senha,
-        role: role
-    };
+    T7Crypto.hashPassword(senha).then(senhaHash => {
+        const novoUsuario = {
+            id: Date.now(),
+            nome: nome,
+            cpf: cpf,
+            senhaHash: senhaHash,
+            role: role
+        };
 
-    todosOsSocios.push(novoUsuario);
-    salvarTodosOsSocios();
+        todosOsSocios.push(novoUsuario);
+        salvarTodosOsSocios();
 
-    document.getElementById('socios-nome').value = '';
-    document.getElementById('socios-cpf').value = '';
-    document.getElementById('socios-senha').value = '';
-    document.getElementById('socios-role').value = 'socio';
+        document.getElementById('socios-nome').value = '';
+        document.getElementById('socios-cpf').value = '';
+        document.getElementById('socios-senha').value = '';
+        document.getElementById('socios-role').value = 'cliente';
 
-    renderSociosTable();
-    carregarFiltroSocios();
-    showSuccessMessage('Usuário criado com sucesso!');
+        renderSociosTable();
+        carregarFiltroSocios();
+        showSuccessMessage('Usuário criado com sucesso!');
+    });
 }
 
 function renderSociosTable() {
@@ -441,7 +694,7 @@ function renderSociosTable() {
     
     todosOsSocios.forEach(socio => {
         const row = document.createElement('tr');
-        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Sócio';
+        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Cliente';
         const isYou = socio.cpf === usuarioLogado.cpf ? '<span style="color: #28a745;"> (Você)</span>' : '';
         
         row.innerHTML = `
@@ -463,6 +716,7 @@ function abrirPainelAdmin() {
     
     document.getElementById('modal-admin').style.display = 'flex';
     renderAdminUsersTable();
+    renderMesesDestravados();
 }
 
 function fecharPainelAdmin() {
@@ -471,7 +725,7 @@ function fecharPainelAdmin() {
     document.getElementById('admin-nome').value = '';
     document.getElementById('admin-cpf').value = '';
     document.getElementById('admin-senha').value = '';
-    document.getElementById('admin-role').value = 'socio';
+    document.getElementById('admin-role').value = 'cliente';
 }
 
 function criarNovoUsuario() {
@@ -501,27 +755,91 @@ function criarNovoUsuario() {
         return;
     }
     
-    // Adicionar novo usuário
-    const novoUsuario = {
-        id: Date.now(),
-        nome: nome,
-        cpf: cpf,
-        senha: senha,
-        role: role
-    };
-    
-    todosOsSocios.push(novoUsuario);
-    salvarTodosOsSocios();
-    
-    // Limpar campos
-    document.getElementById('admin-nome').value = '';
-    document.getElementById('admin-cpf').value = '';
-    document.getElementById('admin-senha').value = '';
-    document.getElementById('admin-role').value = 'socio';
-    
-    renderAdminUsersTable();
-    carregarFiltroSocios();
-    showSuccessMessage('Usuário criado com sucesso!');
+    // Adicionar novo usuário (com hash de senha)
+    T7Crypto.hashPassword(senha).then(senhaHash => {
+        const novoUsuario = {
+            id: Date.now(),
+            nome: nome,
+            cpf: cpf,
+            senhaHash: senhaHash,
+            role: role
+        };
+        
+        todosOsSocios.push(novoUsuario);
+        salvarTodosOsSocios();
+        
+        // Limpar campos
+        document.getElementById('admin-nome').value = '';
+        document.getElementById('admin-cpf').value = '';
+        document.getElementById('admin-senha').value = '';
+        document.getElementById('admin-role').value = 'cliente';
+        
+        renderAdminUsersTable();
+        carregarFiltroSocios();
+        showSuccessMessage('Usuário criado com sucesso!');
+    });
+}
+
+// ===== GERENCIAR MESES TRAVADOS =====
+function renderMesesDestravados() {
+    const container = document.getElementById('meses-destravados-lista');
+    if (!container) return;
+
+    const agora = new Date();
+    const mesAtual = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    const mesesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    // Gerar últimos 12 meses (incluindo atual)
+    const mesesDisponiveis = [];
+    for (let i = 12; i >= 1; i--) {
+        const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+        const mesStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (mesStr < mesAtual) { // Apenas meses passados
+            mesesDisponiveis.push({
+                valor: mesStr,
+                label: `${mesesNomes[d.getMonth()]} de ${d.getFullYear()}`,
+                destravado: mesesDestravados.includes(mesStr)
+            });
+        }
+    }
+
+    if (mesesDisponiveis.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-light); font-size: 0.85rem;">Nenhum mês anterior disponível para destravar.</p>';
+        return;
+    }
+
+    let html = '<div class="meses-grid">';
+    mesesDisponiveis.forEach(m => {
+        const cor = m.destravado ? '#28a745' : '#dc3545';
+        const texto = m.destravado ? '🔓 Editável' : '🔒 Travado';
+        const btnTexto = m.destravado ? '🔒 Travar' : '🔓 Destravar';
+        const btnClass = m.destravado ? 'btn-warning' : 'btn-success';
+        html += `
+            <div class="mes-item">
+                <div class="mes-info">
+                    <span class="mes-label">${m.label}</span>
+                    <span class="mes-status" style="color: ${cor};">${texto}</span>
+                </div>
+                <button class="btn btn-small ${btnClass}" onclick="toggleDestravarMes('${m.valor}'); renderMesesDestravados(); renderLucrosTable(); renderRendimentosTable();">${btnTexto}</button>
+            </div>`;
+    });
+    html += '</div>';
+
+    if (mesesDestravados.length > 0) {
+        html += `<div style="margin-top: 12px;"><button class="btn btn-small btn-danger" onclick="travarTodosMeses()">🔒 Travar Todos os Meses</button></div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function travarTodosMeses() {
+    if (!confirm('Deseja travar TODOS os meses destravados? Os registros voltarão a ficar somente leitura.')) return;
+    mesesDestravados = [];
+    salvarMesesDestravados();
+    renderMesesDestravados();
+    renderLucrosTable();
+    renderRendimentosTable();
+    showSuccessMessage('Todos os meses foram travados!');
 }
 
 function renderAdminUsersTable() {
@@ -530,7 +848,7 @@ function renderAdminUsersTable() {
     
     todosOsSocios.forEach(socio => {
         const row = document.createElement('tr');
-        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Sócio';
+        const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Cliente';
         const isYou = socio.cpf === usuarioLogado.cpf;
         
         row.innerHTML = `
@@ -629,22 +947,33 @@ function salvarEdicaoUsuario() {
     todosOsSocios[idx].nome = novoNome;
     todosOsSocios[idx].cpf = novoCpf;
     todosOsSocios[idx].role = novoRole;
-    if (novaSenha) todosOsSocios[idx].senha = novaSenha;
 
-    salvarTodosOsSocios();
-    fecharModalEditarUsuario();
-    renderAdminUsersTable();
-    carregarFiltroSocios();
-    showSuccessMessage(`Usuário "${novoNome}" atualizado com sucesso!`);
+    const finalizar = () => {
+        salvarTodosOsSocios();
+        fecharModalEditarUsuario();
+        renderAdminUsersTable();
+        carregarFiltroSocios();
+        showSuccessMessage(`Usuário "${novoNome}" atualizado com sucesso!`);
+    };
+
+    if (novaSenha) {
+        T7Crypto.hashPassword(novaSenha).then(hash => {
+            todosOsSocios[idx].senhaHash = hash;
+            delete todosOsSocios[idx].senha; // Remover plaintext legado
+            finalizar();
+        });
+    } else {
+        finalizar();
+    }
 }
 
 // ===== FUNÇÕES DE FILTRO (GERÊNCIA) =====
 function carregarFiltroSocios() {
     const select = document.getElementById('filtro-socio');
-    select.innerHTML = '<option value="todos">Todos os Sócios</option>';
+    select.innerHTML = '<option value="todos">Todos os Clientes</option>';
     
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'socio') { // Apenas sócios, não gerência
+        if (socio.role === 'cliente') { // Apenas clientes, não gerência
             const option = document.createElement('option');
             option.value = socio.cpf;
             option.textContent = `${socio.nome} (${formatarCPFExibicao(socio.cpf)})`;
@@ -691,7 +1020,7 @@ function carregarTodosOsDados() {
     
     // Carregar dados de todos os sócios
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'socio') {
+        if (socio.role === 'cliente') {
             const chave = `dados_${socio.cpf}`;
             const dados = localStorage.getItem(chave);
             
@@ -737,7 +1066,7 @@ function salvarDadosDoUsuario(cpfUsuario = null) {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     
     // Se for sócio, sempre salva nos próprios dados
-    if (userLogado.role === 'socio') {
+    if (userLogado.role === 'cliente') {
         const chave = `dados_${usuarioLogado.cpf}`;
         const dados = {
             lucros: lucrosData.map(({ proprietarioCpf, ...rest }) => rest),
@@ -820,7 +1149,7 @@ function switchTab(tabName) {
 // ===== FUNÇÕES DE LUCROS =====
 function addLucroRow() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    const cpfProprietario = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+    const cpfProprietario = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para adicionar registros.');
@@ -849,6 +1178,11 @@ function addLucroRow() {
 }
 
 function deleteLucroRow(id) {
+    const item = lucrosData.find(l => l.id === id);
+    if (item && item.data && !podeEditarRegistro(item.data)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível excluir.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        return;
+    }
     if (confirm('Deseja realmente excluir este registro?')) {
         lucrosData = lucrosData.filter(item => item.id !== id);
         renderLucrosTable();
@@ -859,15 +1193,26 @@ function deleteLucroRow(id) {
 
 function updateLucroData(id, field, value) {
     const item = lucrosData.find(l => l.id === id);
-    if (item) {
-        if (field === 'valor') {
-            item[field] = parseFloat(value) || 0;
-        } else {
-            item[field] = value;
+    if (!item) return;
+
+    // Verificar travamento mensal (exceto gerência com acesso)
+    if (field === 'data' || field === 'valor' || field === 'socioBeneficiario' || field === 'descricao' || field === 'observacoes') {
+        // Se o campo é data, verificar a NOVA data; senão, verificar a data atual do registro
+        const dataParaVerificar = field === 'data' ? value : item.data;
+        if (dataParaVerificar && !podeEditarRegistro(dataParaVerificar)) {
+            alert('🔒 Este registro pertence a um mês trancado! Não é possível editar.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+            renderLucrosTable(); // Re-render para restaurar o valor original
+            return;
         }
-        salvarDadosDoUsuario();
-        updateLucrosTotal();
     }
+
+    if (field === 'valor') {
+        item[field] = parseFloat(value) || 0;
+    } else {
+        item[field] = value;
+    }
+    salvarDadosDoUsuario();
+    updateLucrosTotal();
 }
 
 function aplicarFiltroLucros() {
@@ -889,14 +1234,14 @@ function renderLucrosTable() {
     
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     const isGerencia = userLogado.role === 'gerencia';
-    const podeEditar = !isGerencia || filtroAtual !== 'todos';
+    const podeEditarGeral = !isGerencia || filtroAtual !== 'todos';
 
     // Aplicar filtro de período
     let dados = lucrosData;
     if (filtroLucros.de)  dados = dados.filter(i => i.data && i.data >= filtroLucros.de);
     if (filtroLucros.ate) dados = dados.filter(i => i.data && i.data <= filtroLucros.ate);
     
-    if (dados.length === 0 && podeEditar) {
+    if (dados.length === 0 && podeEditarGeral) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty-table-msg">
             <div class="empty-row-hint">📋 Nenhum registro encontrado. ${lucrosData.length === 0 ? 'Clique em <strong>➕ Adicionar Registro</strong> para começar.' : 'Tente ajustar o filtro de data.'}</div>
         </td></tr>`;
@@ -906,6 +1251,11 @@ function renderLucrosTable() {
 
     dados.forEach(item => {
         const row = document.createElement('tr');
+        const trancado = item.data && mesEstaTrancado(item.data);
+        const podeEditar = podeEditarGeral && !trancado;
+
+        // Classe visual para linha trancada
+        if (trancado) row.classList.add('row-trancado');
         
         const nomeBeneficiario = getNomeSocioBeneficiario(item);
         
@@ -914,7 +1264,7 @@ function renderLucrosTable() {
         
         if (podeEditar) {
             // Carregar sócios da empresa para a conta em questão
-            const cpfConta = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+            const cpfConta = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
             const sociosDisponiveis = JSON.parse(localStorage.getItem(`socios_empresa_${cpfConta}`) || '[]');
             
             if (sociosDisponiveis.length > 0) {
@@ -946,7 +1296,7 @@ function renderLucrosTable() {
                     </div>`;
             }
         } else {
-            // Modo somente leitura (gerência visualizando todos)
+            // Modo somente leitura (gerência visualizando todos ou mês trancado)
             socioBeneficiarioHTML = `<span class="socio-beneficiario-text">${nomeBeneficiario || '-'}</span>`;
         }
         
@@ -955,6 +1305,9 @@ function renderLucrosTable() {
             : null;
         
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
+        
+        // Indicador de travamento
+        const lockBadge = trancado ? `<span class="badge-trancado" title="Mês trancado — edite o mês atual ou peça à gerência para destravar">🔒</span>` : '';
         
         row.innerHTML = `
             <td>${podeEditar
@@ -965,7 +1318,7 @@ function renderLucrosTable() {
                         <input type="date" class="input-date-hidden" value="${item.data || ''}" onchange="selecionarData(this)">
                     </span>
                   </div>`
-                : `<span class="date-display">${formatarDataBR(item.data)}</span>`
+                : `<span class="date-display">${formatarDataBR(item.data)} ${lockBadge}</span>`
             }</td>
             <td>
                 ${socioBeneficiarioHTML}
@@ -973,12 +1326,24 @@ function renderLucrosTable() {
             <td><input type="text" value="${item.descricao}" ${podeEditar ? '' : 'disabled'} placeholder="Descrição (opcional)" onchange="updateLucroData(${item.id}, 'descricao', this.value)">${proprietarioInfo}</td>
             <td><input type="number" step="0.01" value="${item.valor}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateLucroData(${item.id}, 'valor', this.value)"></td>
             <td><input type="text" value="${item.observacoes}" ${podeEditar ? '' : 'disabled'} placeholder="Observações (opcional)" onchange="updateLucroData(${item.id}, 'observacoes', this.value)"></td>
-            <td>${podeEditar ? `<button class="btn btn-delete" onclick="deleteLucroRow(${item.id})">🗑️ Excluir</button>` : '-'}</td>
+            <td>${podeEditar
+                ? `<button class="btn btn-delete" onclick="deleteLucroRow(${item.id})">🗑️ Excluir</button>`
+                : trancado
+                    ? `<button class="btn btn-locked" disabled title="Mês trancado">🔒</button>`
+                    : '-'
+            }</td>
         `;
         tbody.appendChild(row);
     });
     
     updateLucrosTotal();
+    
+    // Mostrar/ocultar alerta de mês trancado
+    const alertaLucros = document.getElementById('alerta-lucros-trancado');
+    if (alertaLucros) {
+        const temTrancado = dados.some(item => item.data && mesEstaTrancado(item.data));
+        alertaLucros.style.display = temTrancado ? 'flex' : 'none';
+    }
 }
 
 function updateLucrosTotal() {
@@ -998,7 +1363,7 @@ function updateLucrosTotalFiltrado(dados) {
 // ===== FUNÇÕES DE RENDIMENTOS =====
 function addRendimentoRow() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    const cpfProprietario = userLogado.role === 'socio' ? usuarioLogado.cpf : filtroAtual;
+    const cpfProprietario = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para adicionar registros.');
@@ -1022,6 +1387,11 @@ function addRendimentoRow() {
 }
 
 function deleteRendimentoRow(id) {
+    const item = rendimentosData.find(r => r.id === id);
+    if (item && item.mes && !podeEditarRegistro(item.mes)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível excluir.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        return;
+    }
     if (confirm('Deseja realmente excluir este registro?')) {
         rendimentosData = rendimentosData.filter(item => item.id !== id);
         renderRendimentosTable();
@@ -1032,20 +1402,35 @@ function deleteRendimentoRow(id) {
 
 function updateRendimentoData(id, field, value) {
     const item = rendimentosData.find(r => r.id === id);
-    if (item) {
-        if (field === 'valorRendimento' || field === 'irRetido') {
-            item[field] = parseFloat(value) || 0;
-        } else {
-            item[field] = value;
-        }
-        salvarDadosDoUsuario();
-        updateRendimentosTotal();
+    if (!item) return;
+
+    // Verificar travamento mensal
+    if (item.mes && !podeEditarRegistro(item.mes)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível editar.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        renderRendimentosTable();
+        return;
     }
+
+    if (field === 'valorRendimento' || field === 'irRetido') {
+        item[field] = parseFloat(value) || 0;
+    } else {
+        item[field] = value;
+    }
+    salvarDadosDoUsuario();
+    updateRendimentosTotal();
 }
 
 function updateRendimentoMes(id, type, value) {
     const item = rendimentosData.find(r => r.id === id);
     if (!item) return;
+
+    // Verificar travamento mensal antes de alterar
+    if (item.mes && !podeEditarRegistro(item.mes)) {
+        alert('🔒 Este registro pertence a um mês trancado! Não é possível editar.\n\nApenas gerência pode destravar meses pelo painel de Administração.');
+        renderRendimentosTable();
+        return;
+    }
+
     let year = '', month = '';
     if (item.mes) {
         const parts = item.mes.split('-');
@@ -1079,7 +1464,7 @@ function renderRendimentosTable() {
     const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
     const isGerencia = userLogado.role === 'gerencia';
     // Admin sempre pode editar/excluir; sócio também (dados próprios)
-    const podeEditar = true;
+    const podeEditarGeral = true;
 
     // Aplicar filtro de mês/ano
     let dados = rendimentosData;
@@ -1103,6 +1488,11 @@ function renderRendimentosTable() {
 
     dados.forEach(item => {
         const row = document.createElement('tr');
+        const trancado = item.mes && mesEstaTrancado(item.mes);
+        const podeEditar = podeEditarGeral && !trancado;
+
+        // Classe visual para linha trancada
+        if (trancado) row.classList.add('row-trancado');
         
         const proprietario = isGerencia && filtroAtual === 'todos' 
             ? todosOsSocios.find(s => s.cpf === item.proprietarioCpf) 
@@ -1121,23 +1511,35 @@ function renderRendimentosTable() {
         const anoOpts = `<option value="">Ano</option>` +
             anosPreDef.map(a => `<option value="${a}"${anoPart===String(a)?' selected':''}>${a}</option>`).join('');
         
+        // Indicador de travamento
+        const lockBadge = trancado ? `<span class="badge-trancado" title="Mês trancado — edite o mês atual ou peça à gerência para destravar">🔒</span>` : '';
+        const lockCol = trancado ? `<td><button class="btn btn-locked" disabled title="Mês trancado">🔒</button></td>` : `<td><button class="btn btn-delete" onclick="deleteRendimentoRow(${item.id})">🗑️ Excluir</button></td>`;
+        
         row.innerHTML = `
             <td>
-                <div style="display:flex;gap:4px;">
-                    <select style="flex:1.8;" onchange="updateRendimentoMes(${item.id},'mes',this.value)">${mesOpts}</select>
-                    <select style="flex:1;" onchange="updateRendimentoMes(${item.id},'ano',this.value)">${anoOpts}</select>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <select style="flex:1.8;" ${podeEditar ? '' : 'disabled'} onchange="updateRendimentoMes(${item.id},'mes',this.value)">${mesOpts}</select>
+                    <select style="flex:1;" ${podeEditar ? '' : 'disabled'} onchange="updateRendimentoMes(${item.id},'ano',this.value)">${anoOpts}</select>
+                    ${lockBadge}
                 </div>
             </td>
-            <td><input type="text" value="${item.banco}" placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
-            <td><input type="number" step="0.01" value="${item.valorRendimento}" placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
-            <td><input type="number" step="0.01" value="${item.irRetido}" placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
-            <td><input type="text" value="${item.observacoes}" placeholder="Observações (opcional)" onchange="updateRendimentoData(${item.id}, 'observacoes', this.value)"></td>
-            <td><button class="btn btn-delete" onclick="deleteRendimentoRow(${item.id})">🗑️ Excluir</button></td>
+            <td><input type="text" value="${item.banco}" ${podeEditar ? '' : 'disabled'} placeholder="Nome do banco" onchange="updateRendimentoData(${item.id}, 'banco', this.value)">${proprietarioInfo}</td>
+            <td><input type="number" step="0.01" value="${item.valorRendimento}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'valorRendimento', this.value)"></td>
+            <td><input type="number" step="0.01" value="${item.irRetido}" ${podeEditar ? '' : 'disabled'} placeholder="0.00" onchange="updateRendimentoData(${item.id}, 'irRetido', this.value)"></td>
+            <td><input type="text" value="${item.observacoes}" ${podeEditar ? '' : 'disabled'} placeholder="Observações (opcional)" onchange="updateRendimentoData(${item.id}, 'observacoes', this.value)"></td>
+            ${lockCol}
         `;
         tbody.appendChild(row);
     });
     
     updateRendimentosTotalFiltrado(dados);
+    
+    // Mostrar/ocultar alerta de mês trancado
+    const alertaRend = document.getElementById('alerta-rendimentos-trancado');
+    if (alertaRend) {
+        const temTrancado = dados.some(item => item.mes && mesEstaTrancado(item.mes));
+        alertaRend.style.display = temTrancado ? 'flex' : 'none';
+    }
 }
 
 function updateRendimentosTotal() {
@@ -1243,6 +1645,30 @@ function clearAllData(type) {
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para limpar dados.');
+        return;
+    }
+    
+    const dataRef = type === 'lucros' ? lucrosData : rendimentosData;
+    const campoData = type === 'lucros' ? 'data' : 'mes';
+    const trancados = dataRef.filter(item => item[campoData] && mesEstaTrancado(item[campoData]));
+
+    if (trancados.length > 0) {
+        const editaveis = dataRef.length - trancados.length;
+        if (editaveis === 0) {
+            alert(`🔒 Todos os registros pertencem a meses trancados e não podem ser excluídos.\n\nApenas gerência pode destravar meses pelo painel de Administração.`);
+            return;
+        }
+        if (!confirm(`🔒 ${trancados.length} registro(s) de meses trancados serão mantidos.\nApenas os ${editaveis} registro(s) do mês atual serão limpos.\n\nDeseja continuar?`)) return;
+        // Limpar apenas registros editáveis
+        if (type === 'lucros') {
+            lucrosData = lucrosData.filter(item => item.data && mesEstaTrancado(item.data));
+            renderLucrosTable();
+        } else {
+            rendimentosData = rendimentosData.filter(item => item.mes && mesEstaTrancado(item.mes));
+            renderRendimentosTable();
+        }
+        salvarDadosDoUsuario();
+        showSuccessMessage('Dados do mês atual limpos com sucesso!');
         return;
     }
     
@@ -1417,7 +1843,7 @@ function exportarTodosOsDados() {
     let todosRendimentos = [];
 
     todosOsSocios.forEach(socio => {
-        if (socio.role === 'socio') {
+        if (socio.role === 'cliente') {
             const dados = localStorage.getItem(`dados_${socio.cpf}`);
             if (dados) {
                 const parsed = JSON.parse(dados);

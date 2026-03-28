@@ -1,0 +1,59 @@
+[debug] [2026-03-27T17:12:50.367Z] ----------------------------------------------------------------------
+[debug] [2026-03-27T17:12:50.371Z] Command:       /home/linuxbrew/.linuxbrew/Cellar/node/25.8.1_1/bin/node /home/linuxbrew/.linuxbrew/bin/firebase login:ci --no-localhost
+[debug] [2026-03-27T17:12:50.371Z] CLI Version:   15.11.0
+[debug] [2026-03-27T17:12:50.372Z] Platform:      linux
+[debug] [2026-03-27T17:12:50.372Z] Node Version:  v25.8.1
+[debug] [2026-03-27T17:12:50.372Z] Time:          Fri Mar 27 2026 14:12:50 GMT-0300 (Brasilia Standard Time)
+[debug] [2026-03-27T17:12:50.372Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-03-27T17:12:50.376Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[warn] ⚠  Authenticating with a `login:ci` token is deprecated and will be removed in a future major version of `firebase-tools`. Instead, use a service account key with `GOOGLE_APPLICATION_CREDENTIALS`: https://cloud.google.com/docs/authentication/getting-started 
+[debug] [2026-03-27T17:12:50.461Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2026-03-27T17:12:50.461Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"c5bbe113-5c30-4c06-bf7c-1011c44e389d"}
+[debug] [2026-03-27T17:12:51.033Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2026-03-27T17:12:51.034Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"1I972LUznvQEkrzIDB62C-QQpdrle-5GZr7_UerNQt8"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    C5BBE
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=VnEJ63gGibdQr2NglRuxQvaMbhJIOckUsl7RexK2Zsk&session=c5bbe113-5c30-4c06-bf7c-1011c44e389d&attest=1I972LUznvQEkrzIDB62C-QQpdrle-5GZr7_UerNQt8
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 
+[debug] [2026-03-27T17:12:55.163Z] *** [apiv2] error from fetch(https://firebase-public.firebaseio.com/cli.json, {"headers":{},"method":"GET"}): FetchError: request to https://firebase-public.firebaseio.com/cli.json failed, reason: Client network socket disconnected before secure TLS connection was established
+[warn] ⚠  Unable to fetch the CLI MOTD and remote config. This is not a fatal error, but may indicate an issue with your network connection. 
+[debug] [2026-03-27T17:12:55.165Z] Failed to fetch MOTD FirebaseError: Failed to make request to https://firebase-public.firebaseio.com/cli.json
+[debug] [2026-03-27T17:25:31.513Z] ----------------------------------------------------------------------
+[debug] [2026-03-27T17:25:31.524Z] Command:       /home/linuxbrew/.linuxbrew/Cellar/node/25.8.1_1/bin/node /home/linuxbrew/.linuxbrew/bin/firebase login:ci --no-localhost
+[debug] [2026-03-27T17:25:31.524Z] CLI Version:   15.11.0
+[debug] [2026-03-27T17:25:31.525Z] Platform:      linux
+[debug] [2026-03-27T17:25:31.525Z] Node Version:  v25.8.1
+[debug] [2026-03-27T17:25:31.525Z] Time:          Fri Mar 27 2026 14:25:31 GMT-0300 (Brasilia Standard Time)
+[debug] [2026-03-27T17:25:31.525Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-03-27T17:25:31.527Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[warn] ⚠  Authenticating with a `login:ci` token is deprecated and will be removed in a future major version of `firebase-tools`. Instead, use a service account key with `GOOGLE_APPLICATION_CREDENTIALS`: https://cloud.google.com/docs/authentication/getting-started 
+[debug] [2026-03-27T17:25:31.613Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2026-03-27T17:25:31.613Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"b4f21452-16dc-4c3e-a895-3a633469c828"}
+[debug] [2026-03-27T17:25:32.860Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2026-03-27T17:25:32.861Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"OYYH6H69SnVh2y0cXo_axUmvGiCvKBer-d6rnpIe5TA"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    B4F21
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=fe-O3lOlCEBZyJzzLuElEg65caROrU11T-O7yNBf_tg&session=b4f21452-16dc-4c3e-a895-3a633469c828&attest=OYYH6H69SnVh2y0cXo_axUmvGiCvKBer-d6rnpIe5TA
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 
+[debug] [2026-03-27T17:25:33.463Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-03-27T17:25:33.463Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
