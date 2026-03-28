@@ -3,25 +3,34 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function getCPF() {
-      return request.auth.token.email.split('@')[0];
+      return request.auth.token.email != null
+        ? request.auth.token.email.split('@')[0]
+        : null;
     }
 
-    // Dados por usuário — cliente vê só os seus, gerência vê tudo
+    function isAdmin() {
+      return getCPF() == '00000000000';
+    }
+
+    function isAutenticado() {
+      return request.auth != null;
+    }
+
+    // Dados por usuário — cliente vê só os seus, admin vê tudo
     match /dados_usuario/{cpf} {
-      allow read, write: if request.auth != null
-        && (getCPF() == cpf || getCPF() == '00000000000');
+      allow read, write: if isAutenticado()
+        && (getCPF() == cpf || isAdmin());
     }
 
     // Sócios da empresa por usuário
     match /socios_empresa/{cpf} {
-      allow read, write: if request.auth != null
-        && (getCPF() == cpf || getCPF() == '00000000000');
+      allow read, write: if isAutenticado()
+        && (getCPF() == cpf || isAdmin());
     }
 
     // Configs do sistema — qualquer usuário autenticado (app controla acesso por role)
     match /sistema/{doc} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow read, write: if isAutenticado();
     }
 
     // Bloquear resto

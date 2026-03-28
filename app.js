@@ -140,33 +140,35 @@ async function inicializarFirebase() {
 // Cada CPF vira um email: cpf@t7system.local
 async function firebaseAuthComCPF(cpf, senha) {
     if (!db) return false;
-    try {
-        const auth = firebase.auth();
-        const email = `${cpf}@t7system.local`;
+    const auth = firebase.auth();
+    const email = `${cpf}@t7system.local`;
 
-        try {
-            // Tentar logar (usuário já existe)
-            await auth.signInWithEmailAndPassword(email, senha);
-            console.log(`🔐 Firebase Auth: ${cpf} conectado`);
-            return true;
-        } catch (signInErr) {
-            if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
-                // Criar usuário no Firebase Auth
-                try {
-                    await auth.createUserWithEmailAndPassword(email, senha);
-                    console.log(`🔐 Firebase Auth: ${cpf} criado`);
-                    return true;
-                } catch (createErr) {
-                    console.warn('Erro ao criar auth:', createErr.message);
-                    return false;
-                }
+    try {
+        // Tentar logar (usuário já existe)
+        await auth.signInWithEmailAndPassword(email, senha);
+        console.log(`🔐 Firebase Auth: ${cpf} conectado`);
+        return true;
+    } catch (signInErr) {
+        if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
+            // Criar usuário no Firebase Auth
+            try {
+                await auth.createUserWithEmailAndPassword(email, senha);
+                console.log(`🔐 Firebase Auth: ${cpf} criado`);
+                return true;
+            } catch (createErr) {
+                console.warn('Erro ao criar auth:', createErr.message);
             }
-            console.warn('Erro no auth:', signInErr.message);
+        }
+        // Fallback: autenticação anônima (para Firestore funcionar)
+        console.warn('Email/Password auth indisponível, tentando auth anônima...');
+        try {
+            await auth.signInAnonymously();
+            console.log('🔐 Firebase Auth: conectado anonimamente');
+            return true;
+        } catch (anonErr) {
+            console.warn('Auth anônima também falhou:', anonErr.message);
             return false;
         }
-    } catch (e) {
-        console.warn('Firebase Auth falhou:', e.message);
-        return false;
     }
 }
 
