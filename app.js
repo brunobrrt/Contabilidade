@@ -108,7 +108,8 @@ function criarAdminPadrao() {
             delete admin.senha;
         }
         todosOsSocios.push(admin);
-        salvarTodosOsSocios();
+        // Salvar apenas no localStorage — Firebase Auth ainda não existe neste ponto
+        localStorage.setItem('todosOsSocios', JSON.stringify(todosOsSocios));
         console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
     };
     criarComHash();
