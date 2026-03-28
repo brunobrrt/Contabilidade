@@ -6,25 +6,22 @@ service cloud.firestore {
       return request.auth.token.email.split('@')[0];
     }
 
-    function isGerencia() {
-      return request.auth.token.role == 'gerencia';
-    }
-
     // Dados por usuário — cliente vê só os seus, gerência vê tudo
     match /dados_usuario/{cpf} {
       allow read, write: if request.auth != null
-        && (getCPF() == cpf || isGerencia());
+        && (getCPF() == cpf || getCPF() == '00000000000');
     }
 
     // Sócios da empresa por usuário
     match /socios_empresa/{cpf} {
       allow read, write: if request.auth != null
-        && (getCPF() == cpf || isGerencia());
+        && (getCPF() == cpf || getCPF() == '00000000000');
     }
 
-    // Configs do sistema — só gerência
+    // Configs do sistema — qualquer usuário autenticado (app controla acesso por role)
     match /sistema/{doc} {
-      allow read, write: if request.auth != null && isGerencia();
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
     // Bloquear resto

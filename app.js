@@ -21,6 +21,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.warn('Erro na inicialização Firebase:', e.message);
     }
     mostrarCarregandoFirebase(false);
+    // Inicializar crypto do sistema (chave fixa, não depende de login)
+    if (typeof T7Crypto !== 'undefined') {
+        await T7Crypto.initSession('sistema').catch(e => console.warn('Crypto init falhou:', e.message));
+    }
     inicializarSistema();
     verificarLogin();
 });
@@ -34,11 +38,27 @@ function inicializarSistema() {
     if (todosOsSocios.length === 0) {
         // Verificar se Firebase já tem dados antes de criar admin local
         if (db) {
-            db.collection('sistema').doc('usuarios').get().then(doc => {
-                if (doc.exists && doc.data().lista && doc.data().lista.length > 0) {
-                    // Firebase já tem usuários — carregar de lá
-                    carregarTodosOsSocios();
-                    return;
+            db.collection('sistema').doc('usuarios').get().then(async doc => {
+                if (doc.exists) {
+                    const raw = doc.data();
+                    let lista = null;
+                    // Dados podem estar criptografados
+                    if (raw.__encrypted && typeof T7Crypto !== 'undefined') {
+                        try {
+                            const decrypted = await T7Crypto.decrypt(raw);
+                            lista = decrypted?.lista || null;
+                        } catch (e) {
+                            console.warn('Erro ao decrypt usuários do Firebase:', e.message);
+                        }
+                    } else {
+                        lista = raw.lista || null;
+                    }
+                    if (lista && Array.isArray(lista) && lista.length > 0) {
+                        // Firebase já tem usuários — salvar localmente e carregar
+                        localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+                        carregarTodosOsSocios();
+                        return;
+                    }
                 }
                 // Firebase vazio — criar admin local
                 criarAdminPadrao();
