@@ -141,6 +141,12 @@ async function inicializarFirebase() {
 async function firebaseAuthComCPF(cpf, senha) {
     if (!db) return false;
     const auth = firebase.auth();
+    
+    // Desabilitar reCAPTCHA em localhost (desenvolvimento)
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        auth.settings.appVerificationDisabledForTesting = true;
+    }
+    
     const email = `${cpf}@t7system.local`;
 
     try {
@@ -157,7 +163,10 @@ async function firebaseAuthComCPF(cpf, senha) {
                 console.log(`🔐 Firebase Auth: ${cpf} criado`);
                 return true;
             } catch (createErr) {
-                console.warn('Erro ao criar auth:', createErr.message);
+                console.warn('Erro ao criar auth:', createErr.code, createErr.message);
+                if (createErr.code === 'auth/email-already-in-use') {
+                    console.error(`⚠️ Usuário ${cpf}@t7system.local já existe no Firebase com senha diferente. Delete-o no Console → Authentication → Users.`);
+                }
             }
         }
         // Fallback: autenticação anônima (para Firestore funcionar)
@@ -414,7 +423,7 @@ function mostrarSistema() {
     renderRendimentosTable();
 }
 
-function fazerLogin() {
+async function fazerLogin() {
     try {
         const cpf = document.getElementById('login-cpf').value.replace(/\D/g, '');
         const senha = document.getElementById('login-senha').value;
@@ -427,86 +436,105 @@ function fazerLogin() {
         // Recarregar lista de usuários (pode ter sido atualizada pelo Firebase)
         carregarTodosOsSocios();
         
-        const tentarLogin = (socio) => {
+        const concluirLogin = async (socio) => {
             if (!socio) {
                 alert('CPF não encontrado!');
                 return;
             }
 
-            const fazerLoginReal = async (senhaOk) => {
-                if (!senhaOk) {
-                    alert('Senha incorreta!');
-                    return;
+            // Iniciar sessão criptográfica (se disponível)
+            if (typeof T7Crypto !== 'undefined') {
+                try {
+                    await T7Crypto.initSession(senha);
+                } catch (e) {
+                    console.warn('Crypto não disponível, continuando sem:', e.message);
                 }
-                
-                // Iniciar sessão criptográfica (se disponível)
-                if (typeof T7Crypto !== 'undefined') {
-                    try {
-                        await T7Crypto.initSession(senha);
-                    } catch (e) {
-                        console.warn('Crypto não disponível, continuando sem:', e.message);
-                    }
-                }
+            }
 
-                // Login no Firebase Auth (transparente pro usuário)
-                await firebaseAuthComCPF(cpf, senha);
+            // Sincronizar dados do Firebase após login
+            if (db) {
+                await sincronizarDoFirebase();
+                await syncFirebaseUsuarios();
+                // Recarregar após sync (pode ter atualizado dados)
+                carregarTodosOsSocios();
+                socio = todosOsSocios.find(s => s.cpf === cpf) || socio;
+            }
+            
+            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+            localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+            
+            document.getElementById('login-cpf').value = '';
+            document.getElementById('login-senha').value = '';
+            
+            mostrarSistema();
+        };
 
-                // Sincronizar dados do Firebase após login
-                if (db) {
-                    await sincronizarDoFirebase();
-                    // Enviar dados locais (ex: senhas migradas) pro Firebase
-                    await syncFirebaseUsuarios();
-                }
-                
-                usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
-                localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
-                
-                document.getElementById('login-cpf').value = '';
-                document.getElementById('login-senha').value = '';
-                
-                mostrarSistema();
-            };
-
+        const verificarSenhaELogar = (socio) => {
+            if (!socio) {
+                alert('CPF não encontrado!');
+                return;
+            }
             // Verificar senha (hash, plaintext legado, ou fallback)
             if (socio.senhaHash && typeof T7Crypto !== 'undefined') {
-                T7Crypto.verifyPassword(senha, socio.senhaHash).then(fazerLoginReal);
+                T7Crypto.verifyPassword(senha, socio.senhaHash).then(ok => {
+                    if (!ok) { alert('Senha incorreta!'); return; }
+                    concluirLogin(socio);
+                });
             } else if (socio.senha) {
-                // Legado: senha em plaintext
-                fazerLoginReal(socio.senha === senha);
+                if (socio.senha !== senha) { alert('Senha incorreta!'); return; }
+                concluirLogin(socio);
             } else {
                 alert('Erro: dados de senha não encontrados para este usuário.');
             }
         };
 
+        // Se já tem no localStorage, tenta login direto
         let socio = todosOsSocios.find(s => s.cpf === cpf);
-
-        if (!socio) {
-            // Usuário não está no localStorage — tentar buscar do Firebase
-            if (db) {
-                db.collection('sistema').doc('usuarios').get().then(async doc => {
-                    if (doc.exists) {
-                        const raw = doc.data();
-                        let lista = null;
-                        if (raw.__encrypted && typeof T7Crypto !== 'undefined') {
-                            try { lista = (await T7Crypto.decrypt(raw))?.lista || null; } catch(e) {}
-                        } else {
-                            lista = raw.lista || null;
-                        }
-                        if (lista && Array.isArray(lista) && lista.length > 0) {
-                            localStorage.setItem('todosOsSocios', JSON.stringify(lista));
-                            carregarTodosOsSocios();
-                            socio = todosOsSocios.find(s => s.cpf === cpf);
-                        }
-                    }
-                    tentarLogin(socio);
-                }).catch(() => tentarLogin(null));
-            } else {
-                tentarLogin(null);
-            }
+        if (socio) {
+            verificarSenhaELogar(socio);
             return;
         }
 
-        tentarLogin(socio);
+        // CPF não está no localStorage — precisa autenticar no Firebase primeiro
+        // pra depois buscar a lista de usuários
+        if (db) {
+            // 1. Autenticar no Firebase Auth
+            const authOk = await firebaseAuthComCPF(cpf, senha);
+            if (!authOk) {
+                alert('Erro ao conectar com o servidor. Tente novamente.');
+                return;
+            }
+
+            // 2. Buscar usuários do Firebase (agora autenticado)
+            try {
+                const doc = await db.collection('sistema').doc('usuarios').get();
+                if (doc.exists) {
+                    const raw = doc.data();
+                    let lista = null;
+                    if (raw.__encrypted && typeof T7Crypto !== 'undefined') {
+                        try { lista = (await T7Crypto.decrypt(raw))?.lista || null; } catch(e) {}
+                    } else {
+                        lista = raw.lista || null;
+                    }
+                    if (lista && Array.isArray(lista) && lista.length > 0) {
+                        localStorage.setItem('todosOsSocios', JSON.stringify(lista));
+                        carregarTodosOsSocios();
+                    }
+                }
+            } catch (e) {
+                console.error('Erro ao buscar usuários do Firebase:', e.message);
+            }
+
+            // 3. Verificar se CPF existe e validar senha
+            socio = todosOsSocios.find(s => s.cpf === cpf);
+            if (!socio) {
+                alert('CPF não encontrado!');
+                return;
+            }
+            verificarSenhaELogar(socio);
+        } else {
+            alert('CPF não encontrado!');
+        }
     } catch (e) {
         console.error('Erro no login:', e);
         alert('Erro ao fazer login: ' + e.message);
@@ -719,8 +747,8 @@ function criarUsuarioNoModalSocios() {
         alert('CPF deve ter 11 dígitos!');
         return;
     }
-    if (senha.length < 4) {
-        alert('A senha deve ter pelo menos 4 caracteres!');
+    if (senha.length < 6) {
+        alert('A senha deve ter pelo menos 6 caracteres!');
         return;
     }
     if (todosOsSocios.some(s => s.cpf === cpf)) {
@@ -807,8 +835,8 @@ function criarNovoUsuario() {
         return;
     }
     
-    if (senha.length < 4) {
-        alert('A senha deve ter pelo menos 4 caracteres!');
+    if (senha.length < 6) {
+        alert('A senha deve ter pelo menos 6 caracteres!');
         return;
     }
     
