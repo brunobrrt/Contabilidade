@@ -142,6 +142,13 @@ async function firebaseAuthComCPF(cpf, senha) {
     if (!db) return false;
     const auth = firebase.auth();
     
+    // Limpar sessão inválida (ex: usuário deletado do Console, token expirado)
+    if (auth.currentUser) {
+        try {
+            await auth.signOut();
+        } catch (e) {}
+    }
+    
     // Desabilitar reCAPTCHA em localhost (desenvolvimento)
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
         auth.settings.appVerificationDisabledForTesting = true;
@@ -456,7 +463,11 @@ async function fazerLogin() {
             // Login no Firebase Auth (se ainda não autenticado)
             if (db) {
                 const auth = firebase.auth();
-                if (!auth.currentUser || auth.currentUser.isAnonymous) {
+                // Limpar sessão inválida (ex: usuário deletado do Console)
+                if (auth.currentUser && auth.currentUser.isAnonymous) {
+                    await auth.signOut();
+                }
+                if (!auth.currentUser) {
                     await firebaseAuthComCPF(cpf, senha);
                 }
                 await sincronizarDoFirebase();
