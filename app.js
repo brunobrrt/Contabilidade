@@ -149,6 +149,7 @@ async function firebaseAuthComCPF(cpf, senha) {
         console.log(`🔐 Firebase Auth: ${cpf} conectado`);
         return true;
     } catch (signInErr) {
+        console.error('🔑 Erro signIn:', signInErr.code, signInErr.message);
         if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
             // Criar usuário no Firebase Auth
             try {
@@ -250,6 +251,8 @@ async function sincronizarDoFirebase() {
 
 async function syncFirebaseUsuarios() {
     if (!db) return;
+    const auth = firebase.auth();
+    if (!auth.currentUser) return;
     try {
         const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
         await db.collection('sistema').doc('usuarios').set(encrypted);
@@ -451,6 +454,8 @@ function fazerLogin() {
                 // Sincronizar dados do Firebase após login
                 if (db) {
                     await sincronizarDoFirebase();
+                    // Enviar dados locais (ex: senhas migradas) pro Firebase
+                    await syncFirebaseUsuarios();
                 }
                 
                 usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
