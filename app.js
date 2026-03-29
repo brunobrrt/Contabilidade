@@ -138,7 +138,7 @@ async function inicializarFirebase() {
 
 // Login no Firebase Auth com CPF (transparente pro usuário)
 // Cada CPF vira um email: cpf@t7system.local
-async function firebaseAuthComCPF(cpf, senha) {
+async function firebaseAuthComCPF(cpf, senha, authSenha) {
     if (!db) return false;
     const auth = firebase.auth();
     
@@ -155,10 +155,13 @@ async function firebaseAuthComCPF(cpf, senha) {
     }
     
     const email = `${cpf}@t7system.local`;
+    // Usar senhaHash (estável) como senha do Firebase Auth se disponível
+    // Isso evita desync quando a senha local muda
+    const senhaAuth = authSenha || senha;
 
     try {
         // Tentar logar (usuário já existe)
-        await auth.signInWithEmailAndPassword(email, senha);
+        await auth.signInWithEmailAndPassword(email, senhaAuth);
         console.log(`🔐 Firebase Auth: ${cpf} conectado`);
         return true;
     } catch (signInErr) {
@@ -166,7 +169,7 @@ async function firebaseAuthComCPF(cpf, senha) {
         if (signInErr.code === 'auth/user-not-found') {
             // Criar usuário no Firebase Auth
             try {
-                await auth.createUserWithEmailAndPassword(email, senha);
+                await auth.createUserWithEmailAndPassword(email, senhaAuth);
                 console.log(`🔐 Firebase Auth: ${cpf} criado`);
                 return true;
             } catch (createErr) {
@@ -174,9 +177,15 @@ async function firebaseAuthComCPF(cpf, senha) {
             }
         }
         if (signInErr.code === 'auth/invalid-credential') {
-            // Senha mudou localmente mas Firebase Auth tem senha antiga
-            // Não é possível recriar sem deletar via Console
-            console.warn(`⚠️ ${cpf}@t7system.local existe no Firebase com senha antiga. Usando auth anônima como fallback.`);
+            // Senha errada — tentar criar (signOut primeiro pra limpar estado)
+            try {
+                await auth.signOut();
+                await auth.createUserWithEmailAndPassword(email, senhaAuth);
+                console.log(`🔐 Firebase Auth: ${cpf} recriado com nova senha`);
+                return true;
+            } catch (createErr) {
+                console.warn('Erro ao recriar auth:', createErr.code, createErr.message);
+            }
         }
         // Fallback: autenticação anônima (para Firestore funcionar)
         console.warn('Email/Password auth indisponível, tentando auth anônima...');
@@ -463,12 +472,14 @@ async function fazerLogin() {
             // Login no Firebase Auth (se ainda não autenticado)
             if (db) {
                 const auth = firebase.auth();
-                // Limpar sessão inválida (ex: usuário deletado do Console)
+                // Limpar sessão anônima temporária (usada só pra fetch inicial)
                 if (auth.currentUser && auth.currentUser.isAnonymous) {
-                    await auth.signOut();
+                    try { await auth.currentUser.delete(); } catch (e) {
+                        await auth.signOut();
+                    }
                 }
                 if (!auth.currentUser) {
-                    await firebaseAuthComCPF(cpf, senha);
+                    await firebaseAuthComCPF(cpf, senha, socio.senhaHash);
                 }
                 await sincronizarDoFirebase();
                 await syncFirebaseUsuarios();
@@ -512,17 +523,18 @@ async function fazerLogin() {
             return;
         }
 
-        // CPF não está no localStorage — precisa autenticar no Firebase primeiro
-        // pra depois buscar a lista de usuários
+        // CPF não está no localStorage — precisa buscar do Firebase
         if (db) {
-            // 1. Autenticar no Firebase Auth
-            const authOk = await firebaseAuthComCPF(cpf, senha);
-            if (!authOk) {
-                alert('Erro ao conectar com o servidor. Tente novamente.');
-                return;
+            // 1. Auth anônima temporária pra buscar dados (será substituída no concluirLogin)
+            const auth = firebase.auth();
+            if (!auth.currentUser) {
+                try { await auth.signInAnonymously(); } catch (e) {
+                    alert('Erro ao conectar com o servidor. Tente novamente.');
+                    return;
+                }
             }
 
-            // 2. Buscar usuários do Firebase (agora autenticado)
+            // 2. Buscar usuários do Firebase
             try {
                 const doc = await db.collection('sistema').doc('usuarios').get();
                 if (doc.exists) {
