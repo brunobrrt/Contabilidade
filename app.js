@@ -160,35 +160,34 @@ async function firebaseAuthComCPF(cpf, senha, authSenha) {
     const senhaAuth = authSenha || senha;
 
     try {
-        // Tentar logar (usuário já existe)
-        await auth.signInWithEmailAndPassword(email, senhaAuth);
-        console.log(`🔐 Firebase Auth: ${cpf} conectado`);
+        // Tentar criar primeiro (funciona no primeiro login)
+        await auth.createUserWithEmailAndPassword(email, senhaAuth);
+        console.log(`🔐 Firebase Auth: ${cpf} criado`);
         return true;
-    } catch (signInErr) {
-        console.error('🔑 Erro signIn:', signInErr.code, signInErr.message);
-        if (signInErr.code === 'auth/user-not-found') {
-            // Criar usuário no Firebase Auth
+    } catch (createErr) {
+        if (createErr.code === 'auth/email-already-in-use') {
+            // Usuário já existe — fazer signIn
             try {
-                await auth.createUserWithEmailAndPassword(email, senhaAuth);
-                console.log(`🔐 Firebase Auth: ${cpf} criado`);
+                await auth.signInWithEmailAndPassword(email, senhaAuth);
+                console.log(`🔐 Firebase Auth: ${cpf} conectado`);
                 return true;
-            } catch (createErr) {
-                console.warn('Erro ao criar auth:', createErr.code, createErr.message);
+            } catch (signInErr) {
+                console.error('🔑 Erro signIn:', signInErr.code, signInErr.message);
+                if (signInErr.code === 'auth/invalid-credential') {
+                    // Senha hash mudou — recriar
+                    try {
+                        await auth.currentUser.delete();
+                        await auth.createUserWithEmailAndPassword(email, senhaAuth);
+                        console.log(`🔐 Firebase Auth: ${cpf} recriado`);
+                        return true;
+                    } catch (recreateErr) {
+                        console.warn('Erro ao recriar auth:', recreateErr.code, recreateErr.message);
+                    }
+                }
             }
         }
-        if (signInErr.code === 'auth/invalid-credential') {
-            // Senha errada — tentar criar (signOut primeiro pra limpar estado)
-            try {
-                await auth.signOut();
-                await auth.createUserWithEmailAndPassword(email, senhaAuth);
-                console.log(`🔐 Firebase Auth: ${cpf} recriado com nova senha`);
-                return true;
-            } catch (createErr) {
-                console.warn('Erro ao recriar auth:', createErr.code, createErr.message);
-            }
-        }
+        console.warn('Erro ao criar auth:', createErr.code, createErr.message);
         // Fallback: autenticação anônima (para Firestore funcionar)
-        console.warn('Email/Password auth indisponível, tentando auth anônima...');
         try {
             await auth.signInAnonymously();
             console.log('🔐 Firebase Auth: conectado anonimamente');
@@ -473,14 +472,10 @@ async function fazerLogin() {
             if (db) {
                 const auth = firebase.auth();
                 // Limpar sessão anônima temporária (usada só pra fetch inicial)
-                if (auth.currentUser && auth.currentUser.isAnonymous) {
-                    try { await auth.currentUser.delete(); } catch (e) {
-                        await auth.signOut();
-                    }
+                if (auth.currentUser) {
+                    await auth.signOut();
                 }
-                if (!auth.currentUser) {
-                    await firebaseAuthComCPF(cpf, senha, socio.senhaHash);
-                }
+                await firebaseAuthComCPF(cpf, senha, socio.senhaHash);
                 await sincronizarDoFirebase();
                 await syncFirebaseUsuarios();
                 // Recarregar após sync (pode ter atualizado dados)
