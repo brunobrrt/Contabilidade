@@ -172,28 +172,26 @@ async function firebaseAuthComCPF(cpf, senha, authSenha) {
                 console.log(`🔐 Firebase Auth: ${cpf} conectado`);
                 return true;
             } catch (signInErr) {
-                console.error('🔑 Erro signIn:', signInErr.code, signInErr.message);
-                if (signInErr.code === 'auth/invalid-credential') {
-                    // Senha hash mudou — recriar
-                    try {
-                        await auth.currentUser.delete();
-                        await auth.createUserWithEmailAndPassword(email, senhaAuth);
-                        console.log(`🔐 Firebase Auth: ${cpf} recriado`);
-                        return true;
-                    } catch (recreateErr) {
-                        console.warn('Erro ao recriar auth:', recreateErr.code, recreateErr.message);
-                    }
+                console.warn('🔑 Erro signIn:', signInErr.code);
+                // Hash não bate — deletar usuário antigo e recriar
+                try {
+                    if (auth.currentUser) await auth.currentUser.delete();
+                    await auth.createUserWithEmailAndPassword(email, senhaAuth);
+                    console.log(`🔐 Firebase Auth: ${cpf} recriado`);
+                    return true;
+                } catch (reErr) {
+                    console.warn('Erro ao recriar auth:', reErr.code);
                 }
             }
+        } else {
+            console.warn('Erro ao criar auth:', createErr.code, createErr.message);
         }
-        console.warn('Erro ao criar auth:', createErr.code, createErr.message);
-        // Fallback: autenticação anônima (para Firestore funcionar)
+        // Fallback: autenticação anônima
         try {
             await auth.signInAnonymously();
             console.log('🔐 Firebase Auth: conectado anonimamente');
             return true;
         } catch (anonErr) {
-            console.warn('Auth anônima também falhou:', anonErr.message);
             return false;
         }
     }
@@ -211,6 +209,8 @@ async function sincronizarDoFirebase() {
 
     const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
     const cpfAtual = usuarioLogado?.cpf;
+    const userCpf = user.email ? user.email.split('@')[0] : null;
+    console.log(`🔄 Sync Firebase: auth=${userCpf || 'anonimo'}, gerencia=${isGerencia}, cpf=${cpfAtual}`);
 
     try {
         // Carregar lista de usuários (apenas gerência ou para verificação)
@@ -227,38 +227,50 @@ async function sincronizarDoFirebase() {
         // Carregar dados do próprio usuário (ou todos se gerência)
         if (isGerencia) {
             // Gerência carrega dados de todos os clientes
-            const dadosSnap = await db.collection('dados_usuario').get();
-            dadosSnap.forEach(async d => {
-                const raw = d.data();
-                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-                if (dados) localStorage.setItem(`dados_${d.id}`, JSON.stringify({
-                    lucros: dados.lucros || [],
-                    rendimentos: dados.rendimentos || []
-                }));
-            });
-            const sociosSnap = await db.collection('socios_empresa').get();
-            sociosSnap.forEach(async d => {
-                const raw = d.data();
-                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-                if (dados) localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(dados.lista || []));
-            });
+            try {
+                const dadosSnap = await db.collection('dados_usuario').get();
+                for (const d of dadosSnap.docs) {
+                    const raw = d.data();
+                    const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                    if (dados) localStorage.setItem(`dados_${d.id}`, JSON.stringify({
+                        lucros: dados.lucros || [],
+                        rendimentos: dados.rendimentos || []
+                    }));
+                }
+                console.log(`🔄 Sync: ${dadosSnap.size} dados_usuario carregados`);
+            } catch (e) { console.warn('Erro ao carregar dados_usuario:', e.message); }
+            try {
+                const sociosSnap = await db.collection('socios_empresa').get();
+                for (const d of sociosSnap.docs) {
+                    const raw = d.data();
+                    const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                    if (dados) localStorage.setItem(`socios_empresa_${d.id}`, JSON.stringify(dados.lista || []));
+                }
+                console.log(`🔄 Sync: ${sociosSnap.size} socios_empresa carregados`);
+            } catch (e) { console.warn('Erro ao carregar socios_empresa:', e.message); }
         } else if (cpfAtual) {
             // Cliente carrega apenas próprios dados
-            const meuDoc = await db.collection('dados_usuario').doc(cpfAtual).get();
-            if (meuDoc.exists) {
-                const raw = meuDoc.data();
-                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-                if (dados) localStorage.setItem(`dados_${cpfAtual}`, JSON.stringify({
-                    lucros: dados.lucros || [],
-                    rendimentos: dados.rendimentos || []
-                }));
-            }
-            const sociosDoc = await db.collection('socios_empresa').doc(cpfAtual).get();
-            if (sociosDoc.exists) {
-                const raw = sociosDoc.data();
-                const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
-                if (dados) localStorage.setItem(`socios_empresa_${cpfAtual}`, JSON.stringify(dados.lista || []));
-            }
+            try {
+                const meuDoc = await db.collection('dados_usuario').doc(cpfAtual).get();
+                if (meuDoc.exists) {
+                    const raw = meuDoc.data();
+                    const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                    if (dados) localStorage.setItem(`dados_${cpfAtual}`, JSON.stringify({
+                        lucros: dados.lucros || [],
+                        rendimentos: dados.rendimentos || []
+                    }));
+                    console.log('🔄 Sync: dados_usuario carregados');
+                }
+            } catch (e) { console.warn('Erro ao carregar dados_usuario:', e.message); }
+            try {
+                const sociosDoc = await db.collection('socios_empresa').doc(cpfAtual).get();
+                if (sociosDoc.exists) {
+                    const raw = sociosDoc.data();
+                    const dados = raw.__encrypted ? await T7Crypto.decrypt(raw) : raw;
+                    if (dados) localStorage.setItem(`socios_empresa_${cpfAtual}`, JSON.stringify(dados.lista || []));
+                    console.log('🔄 Sync: socios_empresa carregados');
+                }
+            } catch (e) { console.warn('Erro ao carregar socios_empresa:', e.message); }
         }
 
         // Meses destravados (só gerência)
@@ -273,6 +285,7 @@ async function sincronizarDoFirebase() {
     } catch (e) {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
     }
+    console.log('🔄 Sync Firebase completo');
 }
 
 async function syncFirebaseUsuarios() {
@@ -290,18 +303,32 @@ async function syncFirebaseUsuarios() {
 
 async function syncFirebaseDados(cpf, dados) {
     if (!db) return;
+    const auth = firebase.auth();
+    if (!auth.currentUser || auth.currentUser.isAnonymous) {
+        console.warn('⚠️ Sync dados pulado: auth anônima');
+        return;
+    }
     const encrypted = await T7Crypto.encrypt(dados);
-    db.collection('dados_usuario').doc(cpf).set(encrypted).catch(console.error);
+    await db.collection('dados_usuario').doc(cpf).set(encrypted);
+    console.log(`✅ Dados de ${cpf} sincronizados`);
 }
 
 async function syncFirebaseSociosEmpresa(cpf, lista) {
     if (!db) return;
+    const auth = firebase.auth();
+    if (!auth.currentUser || auth.currentUser.isAnonymous) {
+        console.warn('⚠️ Sync sócios pulado: auth anônima');
+        return;
+    }
     const encrypted = await T7Crypto.encrypt({ lista });
-    db.collection('socios_empresa').doc(cpf).set(encrypted).catch(console.error);
+    await db.collection('socios_empresa').doc(cpf).set(encrypted);
+    console.log(`✅ Sócios de ${cpf} sincronizados`);
 }
 
 async function deleteFirebaseDados(cpf) {
     if (!db) return;
+    const auth = firebase.auth();
+    if (!auth.currentUser || auth.currentUser.isAnonymous) return;
     db.collection('dados_usuario').doc(cpf).delete().catch(console.error);
 }
 
