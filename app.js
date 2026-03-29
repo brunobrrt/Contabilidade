@@ -156,7 +156,7 @@ async function firebaseAuthComCPF(cpf, senha) {
         return true;
     } catch (signInErr) {
         console.error('🔑 Erro signIn:', signInErr.code, signInErr.message);
-        if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
+        if (signInErr.code === 'auth/user-not-found') {
             // Criar usuário no Firebase Auth
             try {
                 await auth.createUserWithEmailAndPassword(email, senha);
@@ -164,10 +164,12 @@ async function firebaseAuthComCPF(cpf, senha) {
                 return true;
             } catch (createErr) {
                 console.warn('Erro ao criar auth:', createErr.code, createErr.message);
-                if (createErr.code === 'auth/email-already-in-use') {
-                    console.error(`⚠️ Usuário ${cpf}@t7system.local já existe no Firebase com senha diferente. Delete-o no Console → Authentication → Users.`);
-                }
             }
+        }
+        if (signInErr.code === 'auth/invalid-credential') {
+            // Senha mudou localmente mas Firebase Auth tem senha antiga
+            // Não é possível recriar sem deletar via Console
+            console.warn(`⚠️ ${cpf}@t7system.local existe no Firebase com senha antiga. Usando auth anônima como fallback.`);
         }
         // Fallback: autenticação anônima (para Firestore funcionar)
         console.warn('Email/Password auth indisponível, tentando auth anônima...');
@@ -451,8 +453,12 @@ async function fazerLogin() {
                 }
             }
 
-            // Sincronizar dados do Firebase após login
+            // Login no Firebase Auth (se ainda não autenticado)
             if (db) {
+                const auth = firebase.auth();
+                if (!auth.currentUser || auth.currentUser.isAnonymous) {
+                    await firebaseAuthComCPF(cpf, senha);
+                }
                 await sincronizarDoFirebase();
                 await syncFirebaseUsuarios();
                 // Recarregar após sync (pode ter atualizado dados)
