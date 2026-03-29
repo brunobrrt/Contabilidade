@@ -503,15 +503,23 @@ async function fazerLogin() {
                     await auth.signOut();
                 }
                 await firebaseAuthComCPF(cpf, senha, socio.senhaHash);
+            }
+
+            // Definir usuário logado ANTES do sync (sync precisa saber o role e cpf)
+            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+            localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+
+            // Sincronizar dados do Firebase
+            if (db) {
                 await sincronizarDoFirebase();
                 await syncFirebaseUsuarios();
                 // Recarregar após sync (pode ter atualizado dados)
                 carregarTodosOsSocios();
                 socio = todosOsSocios.find(s => s.cpf === cpf) || socio;
+                // Atualizar usuarioLogado com dados possivelmente atualizados
+                usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+                localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
             }
-            
-            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
-            localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
             
             document.getElementById('login-cpf').value = '';
             document.getElementById('login-senha').value = '';
