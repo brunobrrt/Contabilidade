@@ -607,46 +607,70 @@ async function fazerLogin() {
             return;
         }
 
-        // CPF não está no localStorage — precisa buscar do Firebase
+        // CPF não está no localStorage — buscar do Firebase
         if (db) {
-            // 1. Auth anônima temporária pra buscar dados (será substituída no concluirLogin)
+            // 1. Garantir auth (anônima é suficiente pra ler sistema/usuarios)
             const auth = firebase.auth();
             if (!auth.currentUser) {
-                try { await auth.signInAnonymously(); } catch (e) {
+                try {
+                    await auth.signInAnonymously();
+                    console.log('🔐 Auth anônima para buscar usuários');
+                } catch (e) {
+                    console.error('Erro auth anônima:', e.message);
                     alert('Erro ao conectar com o servidor. Tente novamente.');
                     return;
                 }
             }
 
-            // 2. Buscar usuários do Firebase
+            // 2. Iniciar sessão crypto com chave do sistema (pra descriptografar lista de usuários)
+            if (typeof T7Crypto !== 'undefined') {
+                try { await T7Crypto.initSession('sistema'); } catch (e) {
+                    console.warn('Crypto init falhou:', e.message);
+                }
+            }
+
+            // 3. Buscar e descriptografar lista de usuários do Firebase
+            let encontrouNoFirebase = false;
             try {
                 const doc = await db.collection('sistema').doc('usuarios').get();
                 if (doc.exists) {
                     const raw = doc.data();
                     let lista = null;
                     if (raw.__encrypted && typeof T7Crypto !== 'undefined') {
-                        try { lista = (await T7Crypto.decrypt(raw))?.lista || null; } catch(e) {}
+                        const decrypted = await T7Crypto.decrypt(raw);
+                        lista = decrypted?.lista || null;
+                        if (!lista) console.warn('⚠️ Descriptografia retornou null — dados podem estar corrompidos');
                     } else {
                         lista = raw.lista || null;
                     }
                     if (lista && Array.isArray(lista) && lista.length > 0) {
                         localStorage.setItem('todosOsSocios', JSON.stringify(lista));
                         carregarTodosOsSocios();
+                        encontrouNoFirebase = true;
+                        console.log(`📥 ${lista.length} usuários carregados do Firebase`);
+                    } else {
+                        console.warn('⚠️ Lista de usuários vazia ou inválida no Firebase');
                     }
+                } else {
+                    console.warn('⚠️ Documento sistema/usuarios não existe no Firestore');
                 }
             } catch (e) {
-                console.error('Erro ao buscar usuários do Firebase:', e.message);
+                console.error('❌ Erro ao buscar usuários do Firebase:', e.message);
             }
 
-            // 3. Verificar se CPF existe e validar senha
+            // 4. Verificar se CPF existe agora
             socio = todosOsSocios.find(s => s.cpf === cpf);
             if (!socio) {
-                alert('CPF não encontrado!');
+                if (encontrouNoFirebase) {
+                    alert('CPF não encontrado no sistema!');
+                } else {
+                    alert('Não foi possível carregar os dados do servidor. Verifique sua conexão.');
+                }
                 return;
             }
             verificarSenhaELogar(socio);
         } else {
-            alert('CPF não encontrado!');
+            alert('CPF não encontrado nos dados locais e servidor indisponível.');
         }
     } catch (e) {
         console.error('Erro no login:', e);
