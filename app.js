@@ -293,9 +293,38 @@ async function syncFirebaseUsuarios() {
     const auth = firebase.auth();
     if (!auth.currentUser) return;
     try {
-        const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
+        // Fazer MERGE em vez de overwrite — evita apagar usuários criados por outro Clawdio
+        let usuariosFirebase = [];
+        try {
+            const doc = await db.collection('sistema').doc('usuarios').get();
+            if (doc.exists) {
+                const raw = doc.data();
+                if (raw.__encrypted) {
+                    const decrypted = await T7Crypto.decrypt(raw);
+                    usuariosFirebase = decrypted?.lista || [];
+                } else {
+                    usuariosFirebase = raw.lista || [];
+                }
+            }
+        } catch (e) {
+            console.warn('Não foi possível ler usuários do Firebase para merge:', e.message);
+        }
+
+        // Merge: cada CPF aparece apenas uma vez, versão mais recente vence
+        const mergedMap = new Map();
+        // Primeiro, colocar os do Firebase (base)
+        usuariosFirebase.forEach(u => mergedMap.set(u.cpf, u));
+        // Depois, sobrescrever com os locais (mais recentes)
+        todosOsSocios.forEach(u => mergedMap.set(u.cpf, u));
+        const merged = Array.from(mergedMap.values());
+
+        // Atualizar lista local com o merge
+        todosOsSocios = merged;
+        salvarTodosOsSocios();
+
+        const encrypted = await T7Crypto.encrypt({ lista: merged });
         await db.collection('sistema').doc('usuarios').set(encrypted);
-        console.log('✅ Usuários sincronizados com Firebase');
+        console.log(`✅ Usuários sincronizados (${merged.length} total, merge com ${usuariosFirebase.length} do Firebase)`);
     } catch (e) {
         console.error('❌ Erro ao sincronizar usuários no Firebase:', e.message);
     }
@@ -422,6 +451,31 @@ function verificarLogin() {
         }
         
         mostrarSistema();
+
+        // Sincronizar com Firebase em background (auto-login não fazia sync!)
+        if (db) {
+            const auth = firebase.auth();
+            if (auth.currentUser) {
+                sincronizarDoFirebase().then(() => {
+                    carregarTodosOsSocios();
+                    carregarDadosParaExibicao();
+                    renderLucrosTable();
+                    renderRendimentosTable();
+                    console.log('🔄 Auto-login: dados sincronizados do Firebase');
+                }).catch(e => console.warn('Auto-login sync falhou:', e.message));
+            } else {
+                // Sem auth — tentar auth anônima e depois sync
+                auth.signInAnonymously().then(() => {
+                    return sincronizarDoFirebase();
+                }).then(() => {
+                    carregarTodosOsSocios();
+                    carregarDadosParaExibicao();
+                    renderLucrosTable();
+                    renderRendimentosTable();
+                    console.log('🔄 Auto-login: dados sincronizados (auth anônima)');
+                }).catch(e => console.warn('Auto-login sync falhou:', e.message));
+            }
+        }
     } else {
         mostrarLogin();
     }
