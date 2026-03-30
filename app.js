@@ -110,7 +110,7 @@ function criarAdminPadrao() {
         todosOsSocios.push(admin);
         // Salvar apenas no localStorage — Firebase Auth ainda não existe neste ponto
         localStorage.setItem('todosOsSocios', JSON.stringify(todosOsSocios));
-        console.log('Usuário administrador criado: CPF 00000000000, Senha: admin123');
+        console.log('✅ Usuário administrador padrão criado');
     };
     criarComHash();
 }
@@ -162,14 +162,14 @@ async function firebaseAuthComCPF(cpf, senha, authSenha) {
     try {
         // Tentar criar primeiro (funciona no primeiro login)
         await auth.createUserWithEmailAndPassword(email, senhaAuth);
-        console.log(`🔐 Firebase Auth: ${cpf} criado`);
+        console.log('🔐 Firebase Auth: usuário criado');
         return true;
     } catch (createErr) {
         if (createErr.code === 'auth/email-already-in-use') {
             // Usuário já existe — fazer signIn
             try {
                 await auth.signInWithEmailAndPassword(email, senhaAuth);
-                console.log(`🔐 Firebase Auth: ${cpf} conectado`);
+                console.log('🔐 Firebase Auth: login realizado');
                 return true;
             } catch (signInErr) {
                 console.warn('🔑 Erro signIn:', signInErr.code);
@@ -177,7 +177,7 @@ async function firebaseAuthComCPF(cpf, senha, authSenha) {
                 try {
                     if (auth.currentUser) await auth.currentUser.delete();
                     await auth.createUserWithEmailAndPassword(email, senhaAuth);
-                    console.log(`🔐 Firebase Auth: ${cpf} recriado`);
+                    console.log('🔐 Firebase Auth: usuário recriado');
                     return true;
                 } catch (reErr) {
                     console.warn('Erro ao recriar auth:', reErr.code);
@@ -210,7 +210,7 @@ async function sincronizarDoFirebase() {
     const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
     const cpfAtual = usuarioLogado?.cpf;
     const userCpf = user.email ? user.email.split('@')[0] : null;
-    console.log(`🔄 Sync Firebase: auth=${userCpf || 'anonimo'}, gerencia=${isGerencia}, cpf=${cpfAtual}`);
+    console.log(`🔄 Sync Firebase: auth=${userCpf ? '***' : 'anonimo'}, gerencia=${isGerencia}`);
 
     try {
         // Carregar lista de usuários (apenas gerência ou para verificação)
@@ -310,7 +310,7 @@ async function syncFirebaseDados(cpf, dados) {
     }
     const encrypted = await T7Crypto.encrypt(dados);
     await db.collection('dados_usuario').doc(cpf).set(encrypted);
-    console.log(`✅ Dados de ${cpf} sincronizados`);
+    console.log('✅ Dados sincronizados com Firebase');
 }
 
 async function syncFirebaseSociosEmpresa(cpf, lista) {
@@ -322,7 +322,7 @@ async function syncFirebaseSociosEmpresa(cpf, lista) {
     }
     const encrypted = await T7Crypto.encrypt({ lista });
     await db.collection('socios_empresa').doc(cpf).set(encrypted);
-    console.log(`✅ Sócios de ${cpf} sincronizados`);
+    console.log('✅ Sócios sincronizados com Firebase');
 }
 
 async function deleteFirebaseDados(cpf) {
