@@ -129,6 +129,10 @@ async function inicializarFirebase() {
         }
         firebase.initializeApp(window.firebaseConfig);
         db = firebase.firestore();
+        
+        // Desabilitar reCAPTCHA Enterprise (novo padrão Firebase, nosso app não precisa)
+        try { firebase.auth().settings.appVerificationDisabledForTesting = true; } catch(e) {}
+        
         console.log('✅ Firebase inicializado!');
     } catch (e) {
         console.warn('Firebase indisponível, usando dados locais:', e.message);
@@ -149,10 +153,8 @@ async function firebaseAuthComCPF(cpf, senha, authSenha) {
         } catch (e) {}
     }
     
-    // Desabilitar reCAPTCHA em localhost (desenvolvimento)
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-        auth.settings.appVerificationDisabledForTesting = true;
-    }
+    // Desabilitar reCAPTCHA (já setado globalmente na inicialização, mas garantir)
+    try { auth.settings.appVerificationDisabledForTesting = true; } catch(e) {}
     
     const email = `${cpf}@t7system.local`;
     // Usar senhaHash (estável) como senha do Firebase Auth se disponível
@@ -318,9 +320,9 @@ async function syncFirebaseUsuarios() {
         todosOsSocios.forEach(u => mergedMap.set(u.cpf, u));
         const merged = Array.from(mergedMap.values());
 
-        // Atualizar lista local com o merge
+        // Atualizar lista local com o merge (salvar direto no localStorage, sem chamar salvarTodosOsSocios pra evitar loop)
         todosOsSocios = merged;
-        salvarTodosOsSocios();
+        localStorage.setItem('todosOsSocios', JSON.stringify(merged));
 
         const encrypted = await T7Crypto.encrypt({ lista: merged });
         await db.collection('sistema').doc('usuarios').set(encrypted);
