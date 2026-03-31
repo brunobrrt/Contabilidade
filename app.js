@@ -12,6 +12,25 @@ let filtroRendimentos = { mes: '', ano: '' };
 // Meses destravados pela gerência (lista de "YYYY-MM")
 let mesesDestravados = [];
 
+// ===== HELPERS DE USUÁRIO =====
+// Retorna o identificador primário do usuário logado (CPF ou CNPJ)
+function getIdUsuario() {
+    return usuarioLogado?.cpf || usuarioLogado?.cnpj || '';
+}
+
+// Busca usuário por CPF ou CNPJ
+function buscarUsuarioPorDocumento(documento) {
+    return todosOsSocios.find(s => s.cpf === documento || s.cnpj === documento);
+}
+
+// Busca o usuário logado na lista de sócos
+function getUsuarioLogadoCompleto() {
+    return todosOsSocios.find(s =>
+        (s.cpf && s.cpf === usuarioLogado?.cpf) ||
+        (s.cnpj && s.cnpj === usuarioLogado?.cnpj)
+    );
+}
+
 // ===== INICIALIZAÇÃO =====
 window.addEventListener('DOMContentLoaded', async () => {
     mostrarCarregandoFirebase(true);
@@ -209,8 +228,8 @@ async function sincronizarDoFirebase() {
         return;
     }
 
-    const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
-    const cpfAtual = usuarioLogado?.cpf;
+    const isGerencia = usuarioLogado && getUsuarioLogadoCompleto()?.role === 'gerencia';
+    const cpfAtual = usuarioLogado?.cpf || usuarioLogado?.cnpj;
     const userCpf = user.email ? user.email.split('@')[0] : null;
     console.log(`🔄 Sync Firebase: auth=${userCpf ? '***' : 'anonimo'}, gerencia=${isGerencia}`);
 
@@ -395,7 +414,7 @@ function mesEstaTrancado(mesStr) {
     const mesAtual = getMesAtual();
     if (mes >= mesAtual) return false; // mês atual ou futuro → liberado
     // Mês passado → trancado, a menos que gerência destravou
-    const isGerencia = usuarioLogado && todosOsSocios.find(s => s.cpf === usuarioLogado.cpf)?.role === 'gerencia';
+    const isGerencia = usuarioLogado && getUsuarioLogadoCompleto()?.role === 'gerencia';
     if (isGerencia && mesesDestravados.includes(mes)) return false;
     return true;
 }
@@ -414,7 +433,7 @@ function mesPodeSerDestravado(mesStr) {
 
 // Destravar/travar um mês (toggle, só gerência)
 function toggleDestravarMes(mesStr) {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     if (userLogado?.role !== 'gerencia') {
         alert('Apenas gerência pode destravar meses!');
         return;
@@ -441,11 +460,13 @@ function verificarLogin() {
         // Garantir compatibilidade: se usuário salvo não tem ID, buscar do todosOsSocios
         if (!usuarioLogado.id || !usuarioLogado.nome) {
             carregarTodosOsSocios();
-            const socioCompleto = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+            const socioCompleto = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf || s.cnpj === usuarioLogado.cnpj);
             if (socioCompleto) {
                 usuarioLogado.id = socioCompleto.id;
                 usuarioLogado.nome = socioCompleto.nome;
                 usuarioLogado.role = socioCompleto.role;
+                usuarioLogado.cpf = socioCompleto.cpf || '';
+                usuarioLogado.cnpj = socioCompleto.cnpj || '';
                 localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
             }
         }
@@ -491,7 +512,7 @@ function mostrarSistema() {
     document.getElementById('main-system').style.display = 'block';
     
     // Atualizar nome do usuário e role
-    const socio = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const socio = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf || s.cnpj === usuarioLogado.cnpj);
     if (socio) {
         document.getElementById('usuario-logado').textContent = `👤 ${socio.nome}`;
         
@@ -513,7 +534,7 @@ function mostrarSistema() {
     }
     
     // Carregar sócios da empresa para a conta logada
-    carregarSociosEmpresa(usuarioLogado.cpf);
+    carregarSociosEmpresa(getIdUsuario());
     
     carregarDadosParaExibicao();
     initializeTabs();
@@ -523,20 +544,35 @@ function mostrarSistema() {
 
 async function fazerLogin() {
     try {
-        const cpf = document.getElementById('login-cpf').value.replace(/\D/g, '');
+        const documento = document.getElementById('login-cpf').value.replace(/\D/g, '');
         const senha = document.getElementById('login-senha').value;
         
-        if (!cpf || !senha) {
+        if (!documento || !senha) {
             alert('Por favor, preencha todos os campos!');
+            return;
+        }
+
+        // Detectar se é CPF (11 dígitos) ou CNPJ (14 dígitos)
+        const isCNPJ = documento.length === 14;
+        const isCPF = documento.length === 11;
+
+        if (!isCPF && !isCNPJ) {
+            alert('Digite um CPF (11 dígitos) ou CNPJ (14 dígitos)!');
             return;
         }
 
         // Recarregar lista de usuários (pode ter sido atualizada pelo Firebase)
         carregarTodosOsSocios();
         
+        // Função auxiliar: buscar usuário por CPF ou CNPJ
+        const buscarUsuario = (lista) => {
+            if (isCPF) return lista.find(s => s.cpf === documento);
+            return lista.find(s => s.cnpj === documento);
+        };
+
         const concluirLogin = async (socio) => {
             if (!socio) {
-                alert('CPF não encontrado!');
+                alert(isCNPJ ? 'CNPJ não encontrado!' : 'CPF não encontrado!');
                 return;
             }
 
@@ -550,17 +586,19 @@ async function fazerLogin() {
             }
 
             // Login no Firebase Auth (se ainda não autenticado)
+            // Usa CPF ou CNPJ como identificador do email
+            const authId = socio.cpf || socio.cnpj;
             if (db) {
                 const auth = firebase.auth();
                 // Limpar sessão anônima temporária (usada só pra fetch inicial)
                 if (auth.currentUser) {
                     await auth.signOut();
                 }
-                await firebaseAuthComCPF(cpf, senha, socio.senhaHash);
+                await firebaseAuthComCPF(authId, senha, socio.senhaHash);
             }
 
             // Definir usuário logado ANTES do sync (sync precisa saber o role e cpf)
-            usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+            usuarioLogado = { cpf: socio.cpf || '', cnpj: socio.cnpj || '', role: socio.role, id: socio.id, nome: socio.nome };
             localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
 
             // Sincronizar dados do Firebase
@@ -569,9 +607,9 @@ async function fazerLogin() {
                 await syncFirebaseUsuarios();
                 // Recarregar após sync (pode ter atualizado dados)
                 carregarTodosOsSocios();
-                socio = todosOsSocios.find(s => s.cpf === cpf) || socio;
+                socio = buscarUsuario(todosOsSocios) || socio;
                 // Atualizar usuarioLogado com dados possivelmente atualizados
-                usuarioLogado = { cpf: socio.cpf, role: socio.role, id: socio.id, nome: socio.nome };
+                usuarioLogado = { cpf: socio.cpf || '', cnpj: socio.cnpj || '', role: socio.role, id: socio.id, nome: socio.nome };
                 localStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
             }
             
@@ -583,7 +621,7 @@ async function fazerLogin() {
 
         const verificarSenhaELogar = (socio) => {
             if (!socio) {
-                alert('CPF não encontrado!');
+                alert(isCNPJ ? 'CNPJ não encontrado!' : 'CPF não encontrado!');
                 return;
             }
             // Verificar senha (hash, plaintext legado, ou fallback)
@@ -601,13 +639,13 @@ async function fazerLogin() {
         };
 
         // Se já tem no localStorage, tenta login direto
-        let socio = todosOsSocios.find(s => s.cpf === cpf);
+        let socio = buscarUsuario(todosOsSocios);
         if (socio) {
             verificarSenhaELogar(socio);
             return;
         }
 
-        // CPF não está no localStorage — buscar do Firebase
+        // Usuário não está no localStorage — buscar do Firebase
         if (db) {
             // 1. Garantir auth (anônima é suficiente pra ler sistema/usuarios)
             const auth = firebase.auth();
@@ -658,11 +696,11 @@ async function fazerLogin() {
                 console.error('❌ Erro ao buscar usuários do Firebase:', e.message);
             }
 
-            // 4. Verificar se CPF existe agora
-            socio = todosOsSocios.find(s => s.cpf === cpf);
+            // 4. Verificar se usuário existe agora
+            socio = buscarUsuario(todosOsSocios);
             if (!socio) {
                 if (encontrouNoFirebase) {
-                    alert('CPF não encontrado no sistema!');
+                    alert(isCNPJ ? 'CNPJ não encontrado no sistema!' : 'CPF não encontrado no sistema!');
                 } else {
                     alert('Não foi possível carregar os dados do servidor. Verifique sua conexão.');
                 }
@@ -670,7 +708,7 @@ async function fazerLogin() {
             }
             verificarSenhaELogar(socio);
         } else {
-            alert('CPF não encontrado nos dados locais e servidor indisponível.');
+            alert('Documento não encontrado nos dados locais e servidor indisponível.');
         }
     } catch (e) {
         console.error('Erro no login:', e);
@@ -735,11 +773,11 @@ function salvarTodosOsSocios() {
 
 // ===== FUNÇÕES DE SÓCIOS DA EMPRESA =====
 function getCPFParaSociosEmpresa() {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     if (userLogado && userLogado.role === 'gerencia' && filtroAtual !== 'todos') {
         return filtroAtual;
     }
-    return usuarioLogado.cpf;
+    return getIdUsuario();
 }
 
 function carregarSociosEmpresa(cpf) {
@@ -759,7 +797,7 @@ function abrirModalSociosEmpresa() {
 
     // Atualizar título do modal
     const conta = todosOsSocios.find(s => s.cpf === cpf);
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     let titulo = '🏢 Sócios da Empresa';
     if (conta) {
         titulo = `🏢 Sócios da Empresa — ${conta.nome}`;
@@ -896,6 +934,7 @@ function fecharModalSocios() {
     document.getElementById('modal-socios').style.display = 'none';
     document.getElementById('socios-nome').value = '';
     document.getElementById('socios-cpf').value = '';
+    document.getElementById('socios-cnpj').value = '';
     document.getElementById('socios-senha').value = '';
     document.getElementById('socios-role').value = 'cliente';
 }
@@ -903,23 +942,36 @@ function fecharModalSocios() {
 function criarUsuarioNoModalSocios() {
     const nome = document.getElementById('socios-nome').value.trim();
     const cpf = document.getElementById('socios-cpf').value.replace(/\D/g, '');
+    const cnpj = document.getElementById('socios-cnpj').value.replace(/\D/g, '');
     const senha = document.getElementById('socios-senha').value;
     const role = document.getElementById('socios-role').value;
 
-    if (!nome || !cpf || !senha) {
-        alert('Por favor, preencha todos os campos!');
+    if (!nome || !senha) {
+        alert('Por favor, preencha o nome e a senha!');
         return;
     }
-    if (cpf.length !== 11) {
+    if (!cpf && !cnpj) {
+        alert('Informe pelo menos um CPF ou CNPJ!');
+        return;
+    }
+    if (cpf && cpf.length !== 11) {
         alert('CPF deve ter 11 dígitos!');
+        return;
+    }
+    if (cnpj && cnpj.length !== 14) {
+        alert('CNPJ deve ter 14 dígitos!');
         return;
     }
     if (senha.length < 6) {
         alert('A senha deve ter pelo menos 6 caracteres!');
         return;
     }
-    if (todosOsSocios.some(s => s.cpf === cpf)) {
+    if (cpf && todosOsSocios.some(s => s.cpf === cpf)) {
         alert('Este CPF já está cadastrado!');
+        return;
+    }
+    if (cnpj && todosOsSocios.some(s => s.cnpj === cnpj)) {
+        alert('Este CNPJ já está cadastrado!');
         return;
     }
 
@@ -927,7 +979,8 @@ function criarUsuarioNoModalSocios() {
         const novoUsuario = {
             id: Date.now(),
             nome: nome,
-            cpf: cpf,
+            cpf: cpf || null,
+            cnpj: cnpj || null,
             senhaHash: senhaHash,
             role: role
         };
@@ -937,6 +990,7 @@ function criarUsuarioNoModalSocios() {
 
         document.getElementById('socios-nome').value = '';
         document.getElementById('socios-cpf').value = '';
+        document.getElementById('socios-cnpj').value = '';
         document.getElementById('socios-senha').value = '';
         document.getElementById('socios-role').value = 'cliente';
 
@@ -953,11 +1007,15 @@ function renderSociosTable() {
     todosOsSocios.forEach(socio => {
         const row = document.createElement('tr');
         const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Cliente';
-        const isYou = socio.cpf === usuarioLogado.cpf ? '<span style="color: #28a745;"> (Você)</span>' : '';
+        const isYou = ((socio.cpf && socio.cpf === usuarioLogado.cpf) || (socio.cnpj && socio.cnpj === usuarioLogado.cnpj)) ? '<span style="color: #28a745;"> (Você)</span>' : '';
         
+        const docs = [];
+        if (socio.cpf) docs.push(formatarCPFExibicao(socio.cpf));
+        if (socio.cnpj) docs.push(formatarCNPJExibicao(socio.cnpj));
+
         row.innerHTML = `
             <td>${socio.nome}${isYou}</td>
-            <td>${formatarCPFExibicao(socio.cpf)}</td>
+            <td>${docs.join(' / ') || '-'}</td>
             <td>${roleText}</td>
         `;
         tbody.appendChild(row);
@@ -966,7 +1024,7 @@ function renderSociosTable() {
 
 // ===== FUNÇÕES DE ADMINISTRAÇÃO =====
 function abrirPainelAdmin() {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     if (userLogado.role !== 'gerencia') {
         alert('Acesso negado!');
         return;
@@ -982,6 +1040,7 @@ function fecharPainelAdmin() {
     // Limpar campos
     document.getElementById('admin-nome').value = '';
     document.getElementById('admin-cpf').value = '';
+    document.getElementById('admin-cnpj').value = '';
     document.getElementById('admin-senha').value = '';
     document.getElementById('admin-role').value = 'cliente';
 }
@@ -989,16 +1048,28 @@ function fecharPainelAdmin() {
 function criarNovoUsuario() {
     const nome = document.getElementById('admin-nome').value.trim();
     const cpf = document.getElementById('admin-cpf').value.replace(/\D/g, '');
+    const cnpj = document.getElementById('admin-cnpj').value.replace(/\D/g, '');
     const senha = document.getElementById('admin-senha').value;
     const role = document.getElementById('admin-role').value;
     
-    if (!nome || !cpf || !senha) {
-        alert('Por favor, preencha todos os campos!');
+    if (!nome || !senha) {
+        alert('Por favor, preencha o nome e a senha!');
+        return;
+    }
+
+    // Deve ter CPF ou CNPJ (ou ambos)
+    if (!cpf && !cnpj) {
+        alert('Informe pelo menos um CPF ou CNPJ!');
         return;
     }
     
-    if (cpf.length !== 11) {
+    if (cpf && cpf.length !== 11) {
         alert('CPF deve ter 11 dígitos!');
+        return;
+    }
+
+    if (cnpj && cnpj.length !== 14) {
+        alert('CNPJ deve ter 14 dígitos!');
         return;
     }
     
@@ -1007,9 +1078,13 @@ function criarNovoUsuario() {
         return;
     }
     
-    // Verificar se CPF já existe
-    if (todosOsSocios.some(s => s.cpf === cpf)) {
+    // Verificar se CPF/CNPJ já existe
+    if (cpf && todosOsSocios.some(s => s.cpf === cpf)) {
         alert('Este CPF já está cadastrado!');
+        return;
+    }
+    if (cnpj && todosOsSocios.some(s => s.cnpj === cnpj)) {
+        alert('Este CNPJ já está cadastrado!');
         return;
     }
     
@@ -1018,7 +1093,8 @@ function criarNovoUsuario() {
         const novoUsuario = {
             id: Date.now(),
             nome: nome,
-            cpf: cpf,
+            cpf: cpf || null,
+            cnpj: cnpj || null,
             senhaHash: senhaHash,
             role: role
         };
@@ -1029,6 +1105,7 @@ function criarNovoUsuario() {
         // Limpar campos
         document.getElementById('admin-nome').value = '';
         document.getElementById('admin-cpf').value = '';
+        document.getElementById('admin-cnpj').value = '';
         document.getElementById('admin-senha').value = '';
         document.getElementById('admin-role').value = 'cliente';
         
@@ -1107,16 +1184,22 @@ function renderAdminUsersTable() {
     todosOsSocios.forEach(socio => {
         const row = document.createElement('tr');
         const roleText = socio.role === 'gerencia' ? '⭐ Gerência' : '👔 Cliente';
-        const isYou = socio.cpf === usuarioLogado.cpf;
+        const isYou = (socio.cpf && socio.cpf === usuarioLogado.cpf) || (socio.cnpj && socio.cnpj === usuarioLogado.cnpj);
         
+        // Montar exibição do documento (CPF, CNPJ ou ambos)
+        const docs = [];
+        if (socio.cpf) docs.push(formatarCPFExibicao(socio.cpf));
+        if (socio.cnpj) docs.push(formatarCNPJExibicao(socio.cnpj));
+        const docText = docs.join(' / ') || '-';
+
         row.innerHTML = `
             <td>${socio.nome}${isYou ? ' <span style="color: #28a745;">(Você)</span>' : ''}</td>
-            <td>${formatarCPFExibicao(socio.cpf)}</td>
+            <td>${docText}</td>
             <td>${roleText}</td>
             <td class="td-actions">
                 ${!isYou
-                    ? `<button class="btn btn-edit btn-small" onclick="abrirModalEditarUsuario('${socio.cpf}')">✏️ Editar</button>
-                       <button class="btn btn-delete btn-small" onclick="excluirUsuario('${socio.cpf}')">🗑️ Excluir</button>`
+                    ? `<button class="btn btn-edit btn-small" onclick="abrirModalEditarUsuario('${socio.cpf || socio.cnpj}')">✏️ Editar</button>
+                       <button class="btn btn-delete btn-small" onclick="excluirUsuario('${socio.cpf || socio.cnpj}')">🗑️ Excluir</button>`
                     : '<span style="color: #6c757d;">-</span>'}
             </td>
         `;
@@ -1124,18 +1207,24 @@ function renderAdminUsersTable() {
     });
 }
 
-function excluirUsuario(cpf) {
+function excluirUsuario(documento) {
     if (!confirm('Deseja realmente excluir este usuário? Todos os dados dele serão perdidos!')) {
         return;
     }
     
+    // Encontrar o usuário (pode ser CPF ou CNPJ)
+    const socio = todosOsSocios.find(s => s.cpf === documento || s.cnpj === documento);
+    if (!socio) return;
+    
+    const docId = socio.cpf || socio.cnpj;
+    
     // Remover usuário
-    todosOsSocios = todosOsSocios.filter(s => s.cpf !== cpf);
+    todosOsSocios = todosOsSocios.filter(s => s.id !== socio.id);
     salvarTodosOsSocios();
     
     // Remover dados do usuário
-    localStorage.removeItem(`dados_${cpf}`);
-    deleteFirebaseDados(cpf);
+    localStorage.removeItem(`dados_${docId}`);
+    deleteFirebaseDados(docId);
 
     renderAdminUsersTable();
     carregarFiltroSocios();
@@ -1143,16 +1232,22 @@ function excluirUsuario(cpf) {
 }
 
 // ===== FUNÇÕES DE EDIÇÃO DE USUÁRIO =====
-function abrirModalEditarUsuario(cpf) {
-    const socio = todosOsSocios.find(s => s.cpf === cpf);
+function abrirModalEditarUsuario(documento) {
+    const socio = todosOsSocios.find(s => s.cpf === documento || s.cnpj === documento);
     if (!socio) return;
 
-    document.getElementById('edit-user-cpf-original').value = socio.cpf;
+    const docId = socio.cpf || socio.cnpj;
+    document.getElementById('edit-user-cpf-original').value = docId;
     document.getElementById('edit-user-nome').value = socio.nome;
-    document.getElementById('edit-user-cpf').value = socio.cpf;
+    document.getElementById('edit-user-cpf').value = socio.cpf || '';
+    document.getElementById('edit-user-cnpj').value = socio.cnpj || '';
     document.getElementById('edit-user-role').value = socio.role;
     document.getElementById('edit-user-senha').value = '';
-    document.getElementById('edit-user-subtitle').textContent = `Editando: ${socio.nome} — ${formatarCPFExibicao(socio.cpf)}`;
+
+    const docs = [];
+    if (socio.cpf) docs.push(formatarCPFExibicao(socio.cpf));
+    if (socio.cnpj) docs.push(formatarCNPJExibicao(socio.cnpj));
+    document.getElementById('edit-user-subtitle').textContent = `Editando: ${socio.nome} — ${docs.join(' / ')}`;
 
     document.getElementById('modal-editar-usuario').style.display = 'flex';
 }
@@ -1161,49 +1256,62 @@ function fecharModalEditarUsuario() {
     document.getElementById('modal-editar-usuario').style.display = 'none';
     document.getElementById('edit-user-nome').value = '';
     document.getElementById('edit-user-cpf').value = '';
+    document.getElementById('edit-user-cnpj').value = '';
     document.getElementById('edit-user-senha').value = '';
     document.getElementById('edit-user-cpf-original').value = '';
 }
 
 function salvarEdicaoUsuario() {
-    const cpfOriginal = document.getElementById('edit-user-cpf-original').value;
+    const docOriginal = document.getElementById('edit-user-cpf-original').value;
     const novoNome = document.getElementById('edit-user-nome').value.trim();
     const novoCpf = document.getElementById('edit-user-cpf').value.replace(/\D/g, '');
+    const novoCnpj = document.getElementById('edit-user-cnpj').value.replace(/\D/g, '');
     const novoRole = document.getElementById('edit-user-role').value;
     const novaSenha = document.getElementById('edit-user-senha').value;
 
     if (!novoNome) { alert('O nome é obrigatório!'); return; }
-    if (!novoCpf || novoCpf.length !== 11) { alert('CPF inválido! Deve ter 11 dígitos.'); return; }
+    if (!novoCpf && !novoCnpj) { alert('Informe pelo menos um CPF ou CNPJ!'); return; }
+    if (novoCpf && novoCpf.length !== 11) { alert('CPF inválido! Deve ter 11 dígitos.'); return; }
+    if (novoCnpj && novoCnpj.length !== 14) { alert('CNPJ inválido! Deve ter 14 dígitos.'); return; }
 
-    // Verificar CPF duplicado (apenas se mudou)
-    if (novoCpf !== cpfOriginal && todosOsSocios.some(s => s.cpf === novoCpf)) {
+    // Verificar duplicados (apenas se mudou)
+    if (novoCpf && todosOsSocios.some(s => s.cpf === novoCpf && s.cpf !== docOriginal)) {
         alert('Este CPF já está em uso por outro usuário!');
         return;
     }
+    if (novoCnpj && todosOsSocios.some(s => s.cnpj === novoCnpj && s.cnpj !== docOriginal)) {
+        alert('Este CNPJ já está em uso por outro usuário!');
+        return;
+    }
 
-    const idx = todosOsSocios.findIndex(s => s.cpf === cpfOriginal);
+    // Encontrar o usuário original (pode ser CPF ou CNPJ)
+    const idx = todosOsSocios.findIndex(s => s.cpf === docOriginal || s.cnpj === docOriginal);
     if (idx === -1) { alert('Usuário não encontrado!'); return; }
 
-    // Migrar dados do localStorage se o CPF mudou
-    if (novoCpf !== cpfOriginal) {
-        const dadosAntigos = localStorage.getItem(`dados_${cpfOriginal}`);
+    const idOriginal = todosOsSocios[idx].cpf || todosOsSocios[idx].cnpj;
+    const novoId = novoCpf || novoCnpj;
+
+    // Migrar dados do localStorage se o identificador mudou
+    if (novoId !== idOriginal) {
+        const dadosAntigos = localStorage.getItem(`dados_${idOriginal}`);
         if (dadosAntigos) {
-            localStorage.setItem(`dados_${novoCpf}`, dadosAntigos);
-            localStorage.removeItem(`dados_${cpfOriginal}`);
-            syncFirebaseDados(novoCpf, JSON.parse(dadosAntigos));
-            deleteFirebaseDados(cpfOriginal);
+            localStorage.setItem(`dados_${novoId}`, dadosAntigos);
+            localStorage.removeItem(`dados_${idOriginal}`);
+            syncFirebaseDados(novoId, JSON.parse(dadosAntigos));
+            deleteFirebaseDados(idOriginal);
         }
-        const sociosEmpresaAntigos = localStorage.getItem(`socios_empresa_${cpfOriginal}`);
+        const sociosEmpresaAntigos = localStorage.getItem(`socios_empresa_${idOriginal}`);
         if (sociosEmpresaAntigos) {
-            localStorage.setItem(`socios_empresa_${novoCpf}`, sociosEmpresaAntigos);
-            localStorage.removeItem(`socios_empresa_${cpfOriginal}`);
-            syncFirebaseSociosEmpresa(novoCpf, JSON.parse(sociosEmpresaAntigos));
-            if (db) db.collection('socios_empresa').doc(cpfOriginal).delete().catch(console.error);
+            localStorage.setItem(`socios_empresa_${novoId}`, sociosEmpresaAntigos);
+            localStorage.removeItem(`socios_empresa_${idOriginal}`);
+            syncFirebaseSociosEmpresa(novoId, JSON.parse(sociosEmpresaAntigos));
+            if (db) db.collection('socios_empresa').doc(idOriginal).delete().catch(console.error);
         }
     }
 
     todosOsSocios[idx].nome = novoNome;
-    todosOsSocios[idx].cpf = novoCpf;
+    todosOsSocios[idx].cpf = novoCpf || null;
+    todosOsSocios[idx].cnpj = novoCnpj || null;
     todosOsSocios[idx].role = novoRole;
 
     const finalizar = () => {
@@ -1233,8 +1341,11 @@ function carregarFiltroSocios() {
     todosOsSocios.forEach(socio => {
         if (socio.role === 'cliente') { // Apenas clientes, não gerência
             const option = document.createElement('option');
-            option.value = socio.cpf;
-            option.textContent = `${socio.nome} (${formatarCPFExibicao(socio.cpf)})`;
+            option.value = socio.cpf || socio.cnpj;
+            const docs = [];
+            if (socio.cpf) docs.push(formatarCPFExibicao(socio.cpf));
+            if (socio.cnpj) docs.push(formatarCNPJExibicao(socio.cnpj));
+            option.textContent = `${socio.nome} (${docs.join(' / ')})`;
             select.appendChild(option);
         }
     });
@@ -1257,7 +1368,7 @@ function aplicarFiltro() {
 
 // ===== CARREGAMENTO DE DADOS BASEADO EM ROLE =====
 function carregarDadosParaExibicao() {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     
     if (userLogado.role === 'gerencia') {
         // Gerência vê tudo ou filtrado
@@ -1268,7 +1379,7 @@ function carregarDadosParaExibicao() {
         }
     } else {
         // Sócio vê apenas próprios dados
-        carregarDadosDeUsuario(usuarioLogado.cpf);
+        carregarDadosDeUsuario(getIdUsuario());
     }
 }
 
@@ -1321,17 +1432,17 @@ function carregarDadosDeUsuario(cpf) {
 }
 
 function salvarDadosDoUsuario(cpfUsuario = null) {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     
     // Se for sócio, sempre salva nos próprios dados
     if (userLogado.role === 'cliente') {
-        const chave = `dados_${usuarioLogado.cpf}`;
+        const chave = `dados_${getIdUsuario()}`;
         const dados = {
             lucros: lucrosData.map(({ proprietarioCpf, ...rest }) => rest),
             rendimentos: rendimentosData.map(({ proprietarioCpf, ...rest }) => rest)
         };
         localStorage.setItem(chave, JSON.stringify(dados));
-        syncFirebaseDados(usuarioLogado.cpf, dados);
+        syncFirebaseDados(getIdUsuario(), dados);
     } else {
         // Se for gerência, salvar nos dados do usuário correto
         if (filtroAtual === 'todos') {
@@ -1406,8 +1517,8 @@ function switchTab(tabName) {
 
 // ===== FUNÇÕES DE LUCROS =====
 function addLucroRow() {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    const cpfProprietario = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
+    const userLogado = getUsuarioLogadoCompleto();
+    const cpfProprietario = userLogado.role === 'cliente' ? getIdUsuario() : filtroAtual;
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para adicionar registros.');
@@ -1490,7 +1601,7 @@ function renderLucrosTable() {
     const tbody = document.getElementById('lucros-tbody');
     tbody.innerHTML = '';
     
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     const isGerencia = userLogado.role === 'gerencia';
     const podeEditarGeral = !isGerencia || filtroAtual !== 'todos';
 
@@ -1522,7 +1633,7 @@ function renderLucrosTable() {
         
         if (podeEditar) {
             // Carregar sócios da empresa para a conta em questão
-            const cpfConta = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
+            const cpfConta = userLogado.role === 'cliente' ? getIdUsuario() : filtroAtual;
             const sociosDisponiveis = JSON.parse(localStorage.getItem(`socios_empresa_${cpfConta}`) || '[]');
             
             if (sociosDisponiveis.length > 0) {
@@ -1620,8 +1731,8 @@ function updateLucrosTotalFiltrado(dados) {
 
 // ===== FUNÇÕES DE RENDIMENTOS =====
 function addRendimentoRow() {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
-    const cpfProprietario = userLogado.role === 'cliente' ? usuarioLogado.cpf : filtroAtual;
+    const userLogado = getUsuarioLogadoCompleto();
+    const cpfProprietario = userLogado.role === 'cliente' ? getIdUsuario() : filtroAtual;
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para adicionar registros.');
@@ -1719,7 +1830,7 @@ function renderRendimentosTable() {
     const tbody = document.getElementById('rendimentos-tbody');
     tbody.innerHTML = '';
     
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     const isGerencia = userLogado.role === 'gerencia';
     // Admin sempre pode editar/excluir; sócio também (dados próprios)
     const podeEditarGeral = true;
@@ -1827,6 +1938,10 @@ function formatarCPFExibicao(cpf) {
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
 }
 
+function formatarCNPJExibicao(cnpj) {
+    return cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+}
+
 // Converte YYYY-MM-DD → DD/MM/AAAA
 function formatarDataBR(data) {
     if (!data) return '-';
@@ -1899,7 +2014,7 @@ function selecionarMes(hiddenInput) {
 
 // ===== FUNÇÃO DE LIMPEZA DE DADOS =====
 function clearAllData(type) {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     
     if (userLogado.role === 'gerencia' && filtroAtual === 'todos') {
         alert('Por favor, selecione um sócio específico para limpar dados.');
@@ -1971,7 +2086,7 @@ function gerarDownloadCSV(headers, data, filename) {
 
 // ===== FUNÇÃO DE EXPORTAÇÃO PARA EXCEL/CSV =====
 function exportToExcel(type) {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
     const incluirProprietario = userLogado.role === 'gerencia' && filtroAtual === 'todos';
 
     if (type === 'lucros') {
@@ -2089,7 +2204,7 @@ function exportarEmpresaSelecionada() {
 
 // Exportar todos os dados (para gerência)
 function exportarTodosOsDados() {
-    const userLogado = todosOsSocios.find(s => s.cpf === usuarioLogado.cpf);
+    const userLogado = getUsuarioLogadoCompleto();
 
     if (userLogado.role !== 'gerencia') {
         alert('Acesso negado!');
