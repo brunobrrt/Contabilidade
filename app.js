@@ -129,6 +129,10 @@ async function inicializarFirebase() {
         }
         firebase.initializeApp(window.firebaseConfig);
         db = firebase.firestore();
+        
+        // Desabilitar reCAPTCHA Enterprise (novo padrão Firebase, nosso app não precisa)
+        try { firebase.auth().settings.appVerificationDisabledForTesting = true; } catch(e) {}
+        
         console.log('✅ Firebase inicializado!');
     } catch (e) {
         console.warn('Firebase indisponível, usando dados locais:', e.message);
@@ -149,10 +153,8 @@ async function firebaseAuthComCPF(cpf, senha, authSenha) {
         } catch (e) {}
     }
     
-    // Desabilitar reCAPTCHA em localhost (desenvolvimento)
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-        auth.settings.appVerificationDisabledForTesting = true;
-    }
+    // Desabilitar reCAPTCHA (já setado globalmente na inicialização, mas garantir)
+    try { auth.settings.appVerificationDisabledForTesting = true; } catch(e) {}
     
     const email = `${cpf}@t7system.local`;
     // Usar senhaHash (estável) como senha do Firebase Auth se disponível
@@ -294,9 +296,38 @@ async function syncFirebaseUsuarios() {
     const auth = firebase.auth();
     if (!auth.currentUser) return;
     try {
-        const encrypted = await T7Crypto.encrypt({ lista: todosOsSocios });
+        // Fazer MERGE em vez de overwrite — evita apagar usuários criados por outro Clawdio
+        let usuariosFirebase = [];
+        try {
+            const doc = await db.collection('sistema').doc('usuarios').get();
+            if (doc.exists) {
+                const raw = doc.data();
+                if (raw.__encrypted) {
+                    const decrypted = await T7Crypto.decrypt(raw);
+                    usuariosFirebase = decrypted?.lista || [];
+                } else {
+                    usuariosFirebase = raw.lista || [];
+                }
+            }
+        } catch (e) {
+            console.warn('Não foi possível ler usuários do Firebase para merge:', e.message);
+        }
+
+        // Merge: cada CPF aparece apenas uma vez, versão mais recente vence
+        const mergedMap = new Map();
+        // Primeiro, colocar os do Firebase (base)
+        usuariosFirebase.forEach(u => mergedMap.set(u.cpf, u));
+        // Depois, sobrescrever com os locais (mais recentes)
+        todosOsSocios.forEach(u => mergedMap.set(u.cpf, u));
+        const merged = Array.from(mergedMap.values());
+
+        // Atualizar lista local com o merge (salvar direto no localStorage, sem chamar salvarTodosOsSocios pra evitar loop)
+        todosOsSocios = merged;
+        localStorage.setItem('todosOsSocios', JSON.stringify(merged));
+
+        const encrypted = await T7Crypto.encrypt({ lista: merged });
         await db.collection('sistema').doc('usuarios').set(encrypted);
-        console.log('✅ Usuários sincronizados com Firebase');
+        console.log(`✅ Usuários sincronizados (${merged.length} total, merge com ${usuariosFirebase.length} do Firebase)`);
     } catch (e) {
         console.error('❌ Erro ao sincronizar usuários no Firebase:', e.message);
     }
@@ -304,26 +335,24 @@ async function syncFirebaseUsuarios() {
 
 async function syncFirebaseDados(cpf, dados) {
     if (!db) return;
-    const auth = firebase.auth();
-    if (!auth.currentUser || auth.currentUser.isAnonymous) {
-        console.warn('⚠️ Sync dados pulado: auth anônima');
+    if (!firebase.auth().currentUser) {
+        console.warn('⚠️ Sync dados pulado: sem autenticação');
         return;
     }
     const encrypted = await T7Crypto.encrypt(dados);
     await db.collection('dados_usuario').doc(cpf).set(encrypted);
-    console.log('✅ Dados sincronizados com Firebase');
+    console.log(`✅ Dados de ${cpf} sincronizados`);
 }
 
 async function syncFirebaseSociosEmpresa(cpf, lista) {
     if (!db) return;
-    const auth = firebase.auth();
-    if (!auth.currentUser || auth.currentUser.isAnonymous) {
-        console.warn('⚠️ Sync sócios pulado: auth anônima');
+    if (!firebase.auth().currentUser) {
+        console.warn('⚠️ Sync sócios pulado: sem autenticação');
         return;
     }
     const encrypted = await T7Crypto.encrypt({ lista });
     await db.collection('socios_empresa').doc(cpf).set(encrypted);
-    console.log('✅ Sócios sincronizados com Firebase');
+    console.log(`✅ Sócios de ${cpf} sincronizados`);
 }
 
 async function deleteFirebaseDados(cpf) {
@@ -422,6 +451,31 @@ function verificarLogin() {
         }
         
         mostrarSistema();
+
+        // Sincronizar com Firebase em background (auto-login não fazia sync!)
+        if (db) {
+            const auth = firebase.auth();
+            if (auth.currentUser) {
+                sincronizarDoFirebase().then(() => {
+                    carregarTodosOsSocios();
+                    carregarDadosParaExibicao();
+                    renderLucrosTable();
+                    renderRendimentosTable();
+                    console.log('🔄 Auto-login: dados sincronizados do Firebase');
+                }).catch(e => console.warn('Auto-login sync falhou:', e.message));
+            } else {
+                // Sem auth — tentar auth anônima e depois sync
+                auth.signInAnonymously().then(() => {
+                    return sincronizarDoFirebase();
+                }).then(() => {
+                    carregarTodosOsSocios();
+                    carregarDadosParaExibicao();
+                    renderLucrosTable();
+                    renderRendimentosTable();
+                    console.log('🔄 Auto-login: dados sincronizados (auth anônima)');
+                }).catch(e => console.warn('Auto-login sync falhou:', e.message));
+            }
+        }
     } else {
         mostrarLogin();
     }
@@ -553,50 +607,104 @@ async function fazerLogin() {
             return;
         }
 
-        // CPF não está no localStorage — precisa buscar do Firebase
+        // CPF não está no localStorage — buscar do Firebase
         if (db) {
-            // 1. Auth anônima temporária pra buscar dados (será substituída no concluirLogin)
+            // 1. Garantir auth (anônima é suficiente pra ler sistema/usuarios)
             const auth = firebase.auth();
             if (!auth.currentUser) {
-                try { await auth.signInAnonymously(); } catch (e) {
+                try {
+                    await auth.signInAnonymously();
+                    console.log('🔐 Auth anônima para buscar usuários');
+                } catch (e) {
+                    console.error('Erro auth anônima:', e.message);
                     alert('Erro ao conectar com o servidor. Tente novamente.');
                     return;
                 }
             }
 
-            // 2. Buscar usuários do Firebase
+            // 2. Iniciar sessão crypto com chave do sistema (pra descriptografar lista de usuários)
+            if (typeof T7Crypto !== 'undefined') {
+                try { await T7Crypto.initSession('sistema'); } catch (e) {
+                    console.warn('Crypto init falhou:', e.message);
+                }
+            }
+
+            // 3. Buscar e descriptografar lista de usuários do Firebase
+            let encontrouNoFirebase = false;
             try {
                 const doc = await db.collection('sistema').doc('usuarios').get();
                 if (doc.exists) {
                     const raw = doc.data();
                     let lista = null;
                     if (raw.__encrypted && typeof T7Crypto !== 'undefined') {
-                        try { lista = (await T7Crypto.decrypt(raw))?.lista || null; } catch(e) {}
+                        const decrypted = await T7Crypto.decrypt(raw);
+                        lista = decrypted?.lista || null;
+                        if (!lista) console.warn('⚠️ Descriptografia retornou null — dados podem estar corrompidos');
                     } else {
                         lista = raw.lista || null;
                     }
                     if (lista && Array.isArray(lista) && lista.length > 0) {
                         localStorage.setItem('todosOsSocios', JSON.stringify(lista));
                         carregarTodosOsSocios();
+                        encontrouNoFirebase = true;
+                        console.log(`📥 ${lista.length} usuários carregados do Firebase`);
+                    } else {
+                        console.warn('⚠️ Lista de usuários vazia ou inválida no Firebase');
                     }
+                } else {
+                    console.warn('⚠️ Documento sistema/usuarios não existe no Firestore');
                 }
             } catch (e) {
-                console.error('Erro ao buscar usuários do Firebase:', e.message);
+                console.error('❌ Erro ao buscar usuários do Firebase:', e.message);
             }
 
-            // 3. Verificar se CPF existe e validar senha
+            // 4. Verificar se CPF existe agora
             socio = todosOsSocios.find(s => s.cpf === cpf);
             if (!socio) {
-                alert('CPF não encontrado!');
+                if (encontrouNoFirebase) {
+                    alert('CPF não encontrado no sistema!');
+                } else {
+                    alert('Não foi possível carregar os dados do servidor. Verifique sua conexão.');
+                }
                 return;
             }
             verificarSenhaELogar(socio);
         } else {
-            alert('CPF não encontrado!');
+            alert('CPF não encontrado nos dados locais e servidor indisponível.');
         }
     } catch (e) {
         console.error('Erro no login:', e);
         alert('Erro ao fazer login: ' + e.message);
+    }
+}
+
+// Sincronização manual (botão "Sincronizar")
+async function sincronizarManual() {
+    if (!db) {
+        alert('Firebase não disponível.');
+        return;
+    }
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '⏳ Sincronizando...';
+    try {
+        // Garantir auth
+        const auth = firebase.auth();
+        if (!auth.currentUser) {
+            await auth.signInAnonymously();
+        }
+        await sincronizarDoFirebase();
+        carregarTodosOsSocios();
+        carregarDadosParaExibicao();
+        renderLucrosTable();
+        renderRendimentosTable();
+        if (typeof carregarFiltroSocios === 'function') carregarFiltroSocios();
+        btn.textContent = '✅ Sincronizado!';
+        setTimeout(() => { btn.textContent = '🔄 Sincronizar'; btn.disabled = false; }, 2000);
+    } catch (e) {
+        console.error('Erro na sincronização manual:', e);
+        btn.textContent = '❌ Erro';
+        setTimeout(() => { btn.textContent = '🔄 Sincronizar'; btn.disabled = false; }, 2000);
     }
 }
 

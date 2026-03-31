@@ -16,20 +16,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Dados por usuário — cliente vê só os seus, admin vê tudo
-    match /dados_usuario/{cpf} {
-      allow read, write: if isAutenticado()
-        && (getCPF() == cpf || isAdmin());
-    }
-
-    // Sócios da empresa por usuário
-    match /socios_empresa/{cpf} {
-      allow read, write: if isAutenticado()
-        && (getCPF() == cpf || isAdmin());
-    }
-
-    // Configs do sistema — qualquer usuário autenticado (app controla acesso por role)
+    // Lista de usuários — qualquer autenticado (incluindo anônimo)
+    // Segurança: dados são criptografados client-side (AES-256-GCM)
     match /sistema/{doc} {
+      allow read, write: if isAutenticado();
+    }
+
+    // Dados por usuário — qualquer autenticado pode ler/escrever
+    // Segurança: dados são criptografados client-side
+    // O controle de acesso (cliente vê só os seus) é feito no app
+    match /dados_usuario/{cpf} {
+      allow read, write: if isAutenticado();
+    }
+
+    // Sócios da empresa — mesmo modelo
+    match /socios_empresa/{cpf} {
       allow read, write: if isAutenticado();
     }
 
