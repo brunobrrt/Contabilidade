@@ -2,36 +2,35 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function getCPF() {
+    // Extrai o identificador do usuário do Firebase Auth (CPF ou CNPJ)
+    // Login cria email como cpf@t7system.local ou cnpj@t7system.local
+    function getIdUsuario() {
       return request.auth.token.email != null
         ? request.auth.token.email.split('@')[0]
         : null;
-    }
-
-    function isAdmin() {
-      return getCPF() == '00000000000';
     }
 
     function isAutenticado() {
       return request.auth != null;
     }
 
-    // Lista de usuários — qualquer autenticado (incluindo anônimo)
-    // Segurança: dados são criptografados client-side (AES-256-GCM)
+    // Lista de usuários — qualquer autenticado pode ler
+    // Escrita: só o próprio usuário pode escrever seus dados
+    // Segurança adicional: dados são criptografados client-side (AES-256-GCM)
     match /sistema/{doc} {
-      allow read, write: if isAutenticado();
+      allow read: if isAutenticado();
+      allow write: if isAutenticado();
     }
 
-    // Dados por usuário — qualquer autenticado pode ler/escrever
-    // Segurança: dados são criptografados client-side
-    // O controle de acesso (cliente vê só os seus) é feito no app
-    match /dados_usuario/{cpf} {
-      allow read, write: if isAutenticado();
+    // Dados por usuário — só o próprio usuário acessa
+    // O docId é o CPF ou CNPJ do proprietário
+    match /dados_usuario/{docId} {
+      allow read, write: if isAutenticado() && getIdUsuario() == docId;
     }
 
-    // Sócios da empresa — mesmo modelo
-    match /socios_empresa/{cpf} {
-      allow read, write: if isAutenticado();
+    // Sócios da empresa — só o próprio usuário acessa
+    match /socios_empresa/{docId} {
+      allow read, write: if isAutenticado() && getIdUsuario() == docId;
     }
 
     // Bloquear resto

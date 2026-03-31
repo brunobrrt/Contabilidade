@@ -294,8 +294,8 @@ async function sincronizarDoFirebase() {
             } catch (e) { console.warn('Erro ao carregar socios_empresa:', e.message); }
         }
 
-        // Meses destravados (só gerência)
-        if (isGerencia) {
+        // Meses destravados (todos os usuários precisam saber quais meses estão liberados)
+        {
             const mesesDoc = await db.collection('sistema').doc('mesesDestravados').get();
             if (mesesDoc.exists) {
                 const raw = mesesDoc.data();
@@ -306,6 +306,7 @@ async function sincronizarDoFirebase() {
     } catch (e) {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
     }
+    carregarMesesDestravados();
     console.log('🔄 Sync Firebase completo');
 }
 
@@ -413,9 +414,8 @@ function mesEstaTrancado(mesStr) {
     if (!mes) return false; // sem data = não trava (deixa o usuário preencher)
     const mesAtual = getMesAtual();
     if (mes >= mesAtual) return false; // mês atual ou futuro → liberado
-    // Mês passado → trancado, a menos que gerência destravou
-    const isGerencia = usuarioLogado && getUsuarioLogadoCompleto()?.role === 'gerencia';
-    if (isGerencia && mesesDestravados.includes(mes)) return false;
+    // Mês passado → trancado, a menos que gerência destravou (válido para todos os usuários)
+    if (mesesDestravados.includes(mes)) return false;
     return true;
 }
 
