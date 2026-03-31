@@ -334,26 +334,24 @@ async function syncFirebaseUsuarios() {
 
 async function syncFirebaseDados(cpf, dados) {
     if (!db) return;
-    const auth = firebase.auth();
-    if (!auth.currentUser || auth.currentUser.isAnonymous) {
-        console.warn('⚠️ Sync dados pulado: auth anônima');
+    if (!firebase.auth().currentUser) {
+        console.warn('⚠️ Sync dados pulado: sem autenticação');
         return;
     }
     const encrypted = await T7Crypto.encrypt(dados);
     await db.collection('dados_usuario').doc(cpf).set(encrypted);
-    console.log('✅ Dados sincronizados com Firebase');
+    console.log(`✅ Dados de ${cpf} sincronizados`);
 }
 
 async function syncFirebaseSociosEmpresa(cpf, lista) {
     if (!db) return;
-    const auth = firebase.auth();
-    if (!auth.currentUser || auth.currentUser.isAnonymous) {
-        console.warn('⚠️ Sync sócios pulado: auth anônima');
+    if (!firebase.auth().currentUser) {
+        console.warn('⚠️ Sync sócios pulado: sem autenticação');
         return;
     }
     const encrypted = await T7Crypto.encrypt({ lista });
     await db.collection('socios_empresa').doc(cpf).set(encrypted);
-    console.log('✅ Sócios sincronizados com Firebase');
+    console.log(`✅ Sócios de ${cpf} sincronizados`);
 }
 
 async function deleteFirebaseDados(cpf) {
