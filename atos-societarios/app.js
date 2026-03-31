@@ -16,8 +16,8 @@ let unsubscribePainel = null; // listener em tempo real
 const ETAPAS_POR_TIPO = {
     abertura: [
         { id: 'solicitacao', label: 'Solicitação' },
-        { id: 'rede-sim', label: 'Rede Sim', link: 'https://www.redesim.gov.br/' },
-        { id: 'dbe', label: 'DBE', link: 'https://www8.receita.fazenda.gov.br/SimplesNacional/' },
+        { id: 'rede-sim', label: 'Rede Sim', link: 'https://vreredesim.sp.gov.br/home' },
+        { id: 'dbe', label: 'DBE', link: 'https://www.gov.br/empresas-e-negocios/pt-br/redesim' },
         { id: 'clicksign', label: 'ClickSign', link: 'https://app.clicksign.com/' },
         { id: 'jucesp', label: 'JUCESP', link: 'https://www.jucesponline.sp.gov.br/' },
         { id: 'exigencia', label: 'Exigência' },
