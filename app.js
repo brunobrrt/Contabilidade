@@ -680,6 +680,36 @@ async function fazerLogin() {
     }
 }
 
+// Sincronização manual (botão "Sincronizar")
+async function sincronizarManual() {
+    if (!db) {
+        alert('Firebase não disponível.');
+        return;
+    }
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '⏳ Sincronizando...';
+    try {
+        // Garantir auth
+        const auth = firebase.auth();
+        if (!auth.currentUser) {
+            await auth.signInAnonymously();
+        }
+        await sincronizarDoFirebase();
+        carregarTodosOsSocios();
+        carregarDadosParaExibicao();
+        renderLucrosTable();
+        renderRendimentosTable();
+        if (typeof carregarFiltroSocios === 'function') carregarFiltroSocios();
+        btn.textContent = '✅ Sincronizado!';
+        setTimeout(() => { btn.textContent = '🔄 Sincronizar'; btn.disabled = false; }, 2000);
+    } catch (e) {
+        console.error('Erro na sincronização manual:', e);
+        btn.textContent = '❌ Erro';
+        setTimeout(() => { btn.textContent = '🔄 Sincronizar'; btn.disabled = false; }, 2000);
+    }
+}
+
 function fazerLogout() {
     if (confirm('Deseja realmente sair?')) {
         localStorage.removeItem('usuarioLogado');
