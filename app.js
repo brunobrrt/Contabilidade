@@ -1436,7 +1436,7 @@ function carregarDadosDeUsuario(cpf) {
     if (dados) {
         const dadosParseados = JSON.parse(dados);
         lucrosData = dadosParseados.lucros || [];
-        rendimentosData = dadosParseados.rendimentos || [];
+        rendimentosData = (dadosParseados.rendimentos || []).map(normalizarRendimento);
         
         // Adicionar proprietário para gerência
         lucrosData = lucrosData.map(item => ({ ...item, proprietarioCpf: cpf }));
@@ -1445,6 +1445,32 @@ function carregarDadosDeUsuario(cpf) {
         lucrosData = [];
         rendimentosData = [];
     }
+}
+
+// Normaliza rendimentos do formato antigo (data) para o novo (mes)
+function normalizarRendimento(item) {
+    const r = { ...item };
+    
+    // Formato antigo: tinha campo "data" (YYYY-MM-DD) em vez de "mes" (YYYY-MM)
+    if (r.data && !r.mes) {
+        r.mes = r.data.substring(0, 7); // "2026-03-15" → "2026-03"
+        delete r.data;
+    }
+    
+    // Formato antigo: campo "valor" em vez de "valorRendimento"
+    if (r.valor !== undefined && r.valorRendimento === undefined) {
+        r.valorRendimento = r.valor;
+        delete r.valor;
+    }
+    
+    // Garantir campos obrigatórios
+    r.mes = r.mes || '';
+    r.banco = r.banco || '';
+    r.valorRendimento = r.valorRendimento || 0;
+    r.irRetido = r.irRetido || 0;
+    r.observacoes = r.observacoes || '';
+    
+    return r;
 }
 
 function salvarDadosDoUsuario(cpfUsuario = null) {
