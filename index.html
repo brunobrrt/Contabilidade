@@ -31,8 +31,8 @@
                 <h2>Acesso ao Sistema</h2>
                 <div class="input-group">
                     <label>CPF ou CNPJ</label>
-                    <input type="text" id="login-cpf" placeholder="CPF (11 dígitos) ou CNPJ (14 dígitos)" maxlength="14"
-                        inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onkeypress="if(event.key==='Enter') fazerLogin()">
+                    <input type="text" id="login-cpf" placeholder="000.000.000-00 ou 00.000.000/0000-00" maxlength="18"
+                        inputmode="numeric" oninput="mascaraCPFCNPJ(this)" onkeypress="if(event.key==='Enter') fazerLogin()">
                 </div>
                 <div class="input-group">
                     <label>Senha</label>
@@ -224,10 +224,10 @@
                     <div class="form-group">
                         <div class="edit-form-row">
                             <input type="text" id="socios-nome" placeholder="Nome completo">
-                            <input type="text" id="socios-cpf" placeholder="CPF — 11 dígitos (opcional se tiver CNPJ)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                            <input type="text" id="socios-cpf" placeholder="CPF — 000.000.000-00" maxlength="14" inputmode="numeric" oninput="mascaraCPF(this)">
                         </div>
                         <div class="edit-form-row">
-                            <input type="text" id="socios-cnpj" placeholder="CNPJ — 14 dígitos (opcional se tiver CPF)" maxlength="14" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                            <input type="text" id="socios-cnpj" placeholder="CNPJ — 00.000.000/0000-00" maxlength="18" inputmode="numeric" oninput="mascaraCNPJ(this)">
                             <select id="socios-role">
                                 <option value="cliente">Cliente  acesso próprio/option>
                                 <option value="gerencia">Gerência  acesso total</option>
@@ -272,10 +272,10 @@
                     <div class="form-group">
                         <div class="edit-form-row">
                             <input type="text" id="admin-nome" placeholder="Nome completo">
-                            <input type="text" id="admin-cpf" placeholder="CPF — 11 dígitos (opcional se tiver CNPJ)" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                            <input type="text" id="admin-cpf" placeholder="CPF — 000.000.000-00" maxlength="14" inputmode="numeric" oninput="mascaraCPF(this)">
                         </div>
                         <div class="edit-form-row">
-                            <input type="text" id="admin-cnpj" placeholder="CNPJ — 14 dígitos (opcional se tiver CPF)" maxlength="14" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                            <input type="text" id="admin-cnpj" placeholder="CNPJ — 00.000.000/0000-00" maxlength="18" inputmode="numeric" oninput="mascaraCNPJ(this)">
                             <select id="admin-role">
                                 <option value="cliente">Cliente  acesso próprio/option>
                                 <option value="gerencia">Gerência  acesso total</option>
@@ -334,13 +334,13 @@
                         </div>
                         <div class="form-field">
                             <label>CPF <span class="optional">(opcional)</span></label>
-                            <input type="text" id="edit-user-cpf" placeholder="11 dígitos" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                            <input type="text" id="edit-user-cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" oninput="mascaraCPF(this)">
                         </div>
                     </div>
                     <div class="edit-form-row">
                         <div class="form-field">
                             <label>CNPJ <span class="optional">(opcional)</span></label>
-                            <input type="text" id="edit-user-cnpj" placeholder="14 dígitos" maxlength="14" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
+                            <input type="text" id="edit-user-cnpj" placeholder="00.000.000/0000-00" maxlength="18" inputmode="numeric" oninput="mascaraCNPJ(this)">
                         </div>
                         <div class="form-field">
                             <label>Perfil</label>

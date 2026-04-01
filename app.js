@@ -1293,6 +1293,9 @@ function abrirModalEditarUsuario(documento) {
     document.getElementById('edit-user-nome').value = socio.nome;
     document.getElementById('edit-user-cpf').value = socio.cpf || '';
     document.getElementById('edit-user-cnpj').value = socio.cnpj || '';
+    // Aplicar máscara nos campos preenchidos
+    if (socio.cpf) mascaraCPF(document.getElementById('edit-user-cpf'));
+    if (socio.cnpj) mascaraCNPJ(document.getElementById('edit-user-cnpj'));
     document.getElementById('edit-user-role').value = socio.role;
     document.getElementById('edit-user-senha').value = '';
 
@@ -2026,6 +2029,45 @@ function formatarCPFExibicao(cpf) {
 
 function formatarCNPJExibicao(cnpj) {
     return cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+}
+
+// Máscara CPF (000.000.000-00) ou CNPJ (00.000.000/0000-00) — detecta automaticamente
+function mascaraCPFCNPJ(input) {
+    let v = input.value.replace(/\D/g, '');
+    if (v.length > 14) v = v.substring(0, 14);
+
+    if (v.length > 11) {
+        // CNPJ: 00.000.000/0000-00
+        v = v.replace(/^(\d{2})(\d)/, '$1.$2');
+        v = v.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+        v = v.replace(/\.(\d{3})(\d)/, '.$1/$2');
+        v = v.replace(/(\d{4})(\d)/, '$1-$2');
+    } else {
+        // CPF: 000.000.000-00
+        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+        v = v.replace(/(\d{3})(\d)/, '$1-$2');
+    }
+    input.value = v;
+}
+
+// Máscara só CPF: 000.000.000-00
+function mascaraCPF(input) {
+    let v = input.value.replace(/\D/g, '').substring(0, 11);
+    v = v.replace(/(\d{3})(\d)/, '$1.$2');
+    v = v.replace(/(\d{3})(\d)/, '$1.$2');
+    v = v.replace(/(\d{3})(\d)/, '$1-$2');
+    input.value = v;
+}
+
+// Máscara só CNPJ: 00.000.000/0000-00
+function mascaraCNPJ(input) {
+    let v = input.value.replace(/\D/g, '').substring(0, 14);
+    v = v.replace(/^(\d{2})(\d)/, '$1.$2');
+    v = v.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+    v = v.replace(/\.(\d{3})(\d)/, '.$1/$2');
+    v = v.replace(/(\d{4})(\d)/, '$1-$2');
+    input.value = v;
 }
 
 // Converte YYYY-MM-DD → DD/MM/AAAA
