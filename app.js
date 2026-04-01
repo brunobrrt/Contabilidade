@@ -1843,14 +1843,20 @@ function updateRendimentoMes(id, type, value) {
     }
 
     let year = '', month = '';
-    if (item.mes) {
+    if (item.mes && item.mes.includes('-')) {
         const parts = item.mes.split('-');
         year = parts[0] || '';
         month = parts[1] || '';
     }
     if (type === 'mes') month = value;
     if (type === 'ano') year = value;
-    item.mes = year && month ? `${year}-${month}` : '';
+
+    // Se selecionou mês mas não ano, assume ano atual
+    if (month && !year) {
+        year = String(new Date().getFullYear());
+    }
+    // Salvar apenas se tiver mês selecionado
+    item.mes = (year && month) ? `${year}-${month}` : '';
     salvarDadosDoUsuario();
     updateRendimentosTotal();
 }
