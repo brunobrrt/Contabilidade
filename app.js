@@ -311,6 +311,42 @@ async function sincronizarDoFirebase() {
         console.warn('Erro ao sincronizar do Firebase:', e.message);
     }
     carregarMesesDestravados();
+
+    // ⬆️ PUSH: enviar dados locais pro Firebase (só com auth real)
+    if (!isAnonimo) {
+        try {
+            const meuId = getIdUsuario();
+            if (meuId) {
+                // Enviar dados do usuário se existirem no localStorage
+                const dadosLocal = localStorage.getItem(`dados_${meuId}`);
+                if (dadosLocal) {
+                    await syncFirebaseDados(meuId, JSON.parse(dadosLocal));
+                    console.log('⬆️ Push: dados_usuario enviados pro Firebase');
+                }
+                // Enviar sócios se existirem no localStorage
+                const sociosLocal = localStorage.getItem(`socios_empresa_${meuId}`);
+                if (sociosLocal) {
+                    await syncFirebaseSociosEmpresa(meuId, JSON.parse(sociosLocal));
+                    console.log('⬆️ Push: socios_empresa enviados pro Firebase');
+                }
+            }
+            // Admin: enviar TODOS os dados de TODOS os usuários
+            if (isGerencia) {
+                for (const socio of todosOsSocios) {
+                    const sid = socio.cpf || socio.cnpj;
+                    if (!sid) continue;
+                    const d = localStorage.getItem(`dados_${sid}`);
+                    if (d) await syncFirebaseDados(sid, JSON.parse(d));
+                    const s = localStorage.getItem(`socios_empresa_${sid}`);
+                    if (s) await syncFirebaseSociosEmpresa(sid, JSON.parse(s));
+                }
+                console.log('⬆️ Push: todos os dados enviados pro Firebase');
+            }
+        } catch (e) {
+            console.warn('⬆️ Erro ao enviar dados pro Firebase:', e.message);
+        }
+    }
+
     console.log('🔄 Sync Firebase completo');
 }
 
