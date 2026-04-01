@@ -1442,7 +1442,9 @@ function carregarTodosOsDados() {
     // Carregar dados de todos os sócios
     todosOsSocios.forEach(socio => {
         if (socio.role === 'cliente') {
-            const chave = `dados_${socio.cpf}`;
+            const docId = socio.cpf || socio.cnpj;
+            if (!docId) return; // Pular se não tem identificador
+            const chave = `dados_${docId}`;
             const dados = localStorage.getItem(chave);
             
             if (dados) {
@@ -1451,13 +1453,13 @@ function carregarTodosOsDados() {
                 // Adicionar dados com identificação do proprietário
                 if (dadosParseados.lucros) {
                     dadosParseados.lucros.forEach(item => {
-                        lucrosData.push({ ...item, proprietarioCpf: socio.cpf });
+                        lucrosData.push({ ...item, proprietarioCpf: docId });
                     });
                 }
                 
                 if (dadosParseados.rendimentos) {
                     dadosParseados.rendimentos.forEach(item => {
-                        rendimentosData.push({ ...item, proprietarioCpf: socio.cpf });
+                        rendimentosData.push({ ...normalizarRendimento(item), proprietarioCpf: docId });
                     });
                 }
             }
@@ -1748,7 +1750,7 @@ function renderLucrosTable() {
         }
         
         const proprietario = isGerencia && filtroAtual === 'todos' 
-            ? todosOsSocios.find(s => s.cpf === item.proprietarioCpf) 
+            ? todosOsSocios.find(s => s.cpf === item.proprietarioCpf || s.cnpj === item.proprietarioCpf) 
             : null;
         
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
@@ -1948,7 +1950,7 @@ function renderRendimentosTable() {
         if (trancado) row.classList.add('row-trancado');
         
         const proprietario = isGerencia && filtroAtual === 'todos' 
-            ? todosOsSocios.find(s => s.cpf === item.proprietarioCpf) 
+            ? todosOsSocios.find(s => s.cpf === item.proprietarioCpf || s.cnpj === item.proprietarioCpf) 
             : null;
         
         const proprietarioInfo = proprietario ? `<br><small style="color: #6c757d;">Registrado por: ${proprietario.nome}</small>` : '';
@@ -2182,7 +2184,7 @@ function exportToExcel(type) {
             ? ['Empresa', 'Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações']
             : ['Data do Crédito', 'Sócio Beneficiário', 'Descrição da Operação', 'Valor (R$)', 'Observações'];
         const data = lucrosData.map(item => {
-            const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
+            const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf || s.cnpj === item.proprietarioCpf);
             const base = [
                 formatarDataBR(item.data),
                 getNomeSocioBeneficiario(item),
@@ -2206,7 +2208,7 @@ function exportToExcel(type) {
             ? ['Empresa', 'Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações']
             : ['Mês do Rendimento', 'Banco', 'Valor Rendimento (R$)', 'IR Retido pelo Banco', 'Observações'];
         const data = rendimentosData.map(item => {
-            const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf);
+            const proprietario = todosOsSocios.find(s => s.cpf === item.proprietarioCpf || s.cnpj === item.proprietarioCpf);
             const base = [
                 formatarMesBR(item.mes),
                 item.banco || '',
