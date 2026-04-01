@@ -14,23 +14,31 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Admin (CPF 00000000000) tem acesso total para gerenciar o sistema
+    function isAdmin() {
+      return getIdUsuario() == '00000000000';
+    }
+
+    // O próprio usuário OU o admin pode acessar
+    function isProprietarioOuAdmin(docId) {
+      return isAutenticado() && (getIdUsuario() == docId || isAdmin());
+    }
+
     // Lista de usuários — qualquer autenticado pode ler
-    // Escrita: só o próprio usuário pode escrever seus dados
-    // Segurança adicional: dados são criptografados client-side (AES-256-GCM)
     match /sistema/{doc} {
       allow read: if isAutenticado();
       allow write: if isAutenticado();
     }
 
-    // Dados por usuário — só o próprio usuário acessa
+    // Dados por usuário — próprio usuário OU admin acessa
     // O docId é o CPF ou CNPJ do proprietário
     match /dados_usuario/{docId} {
-      allow read, write: if isAutenticado() && getIdUsuario() == docId;
+      allow read, write: if isProprietarioOuAdmin(docId);
     }
 
-    // Sócios da empresa — só o próprio usuário acessa
+    // Sócios da empresa — próprio usuário OU admin acessa
     match /socios_empresa/{docId} {
-      allow read, write: if isAutenticado() && getIdUsuario() == docId;
+      allow read, write: if isProprietarioOuAdmin(docId);
     }
 
     // Bloquear resto
